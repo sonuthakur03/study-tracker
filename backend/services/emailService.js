@@ -1,7 +1,33 @@
-const { Resend } = require('resend');
+const https = require('https');
 const { DSAQuestion, RoadmapTopic, Assignment, Task } = require('../models/index');
 const { EmailSettings } = require('../models/adminModels');
 
+// ── Brevo HTTP helper (no extra dependencies) ─────────────────────────────────
+const brevoPost = (data) => new Promise((resolve, reject) => {
+  const body = JSON.stringify(data);
+  const req  = https.request({
+    hostname: 'api.brevo.com',
+    path:     '/v3/smtp/email',
+    method:   'POST',
+    headers:  {
+      'api-key':        process.env.BREVO_API_KEY,
+      'Content-Type':   'application/json',
+      'Content-Length': Buffer.byteLength(body),
+    },
+  }, (res) => {
+    let raw = '';
+    res.on('data', c => raw += c);
+    res.on('end', () => {
+      if (res.statusCode >= 200 && res.statusCode < 300) resolve(JSON.parse(raw));
+      else reject(new Error(`Brevo ${res.statusCode}: ${raw}`));
+    });
+  });
+  req.on('error', reject);
+  req.write(body);
+  req.end();
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const getDayName = () =>
   ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
 
@@ -22,10 +48,9 @@ const getNextTopic = async (user, path) => {
   }).sort({ phase: 1, order: 1 });
 };
 
+// ── Email HTML builder ────────────────────────────────────────────────────────
 const buildEmailHtml = async (user, options = {}) => {
   const { announcement } = options;
-
-  // Fetch admin email settings
   const cfg = await EmailSettings.getSingleton();
 
   const dsa       = cfg.showDSA         ? await getDSAOfDay() : null;
@@ -46,11 +71,11 @@ const buildEmailHtml = async (user, options = {}) => {
         `<li style="margin:6px 0;color:#334155;">${t.title}
           <span style="background:#EEF2FF;color:#6366F1;padding:2px 8px;border-radius:12px;font-size:11px;margin-left:6px;">${t.type}</span>
         </li>`).join('')
-    : '<li style="color:#94A3B8;">No tasks set for today — log in and add some!</li>';
+    : '<li style="color:#94A3B8;">No tasks for today yet.</li>';
 
   const assignmentRows = dueAssignments.length
     ? dueAssignments.map(a => {
-        const days = Math.ceil((new Date(a.dueDate) - Date.now()) / 86400000);
+        const days  = Math.ceil((new Date(a.dueDate) - Date.now()) / 86400000);
         const color = days <= 1 ? '#EF4444' : days <= 2 ? '#F59E0B' : '#10B981';
         return `<tr>
           <td style="padding:8px;border-bottom:1px solid #F1F5F9;">${a.subject}</td>
@@ -63,12 +88,11 @@ const buildEmailHtml = async (user, options = {}) => {
     : '<tr><td colspan="3" style="padding:12px;color:#94A3B8;text-align:center;">No urgent assignments 🎉</td></tr>';
 
   const announceBlock = announcement
-    ? `<div style="background:#FEF3C7;border-left:4px solid #F59E0B;border-radius:8px;padding:16px;margin:20px 0;">
+    ? `<div style="background:#FEF3C7;border-left:4px solid #F59E0B;border-radius:8px;padding:16px;margin:0 0 20px;">
         <p style="margin:0 0 4px;font-weight:600;color:#92400E;">📢 ${announcement.title || 'Announcement'}</p>
         <p style="margin:0;color:#78350F;">${announcement.content}</p>
       </div>` : '';
 
-  // Admin's custom daily message
   const adminMsgBlock = cfg.dailyMessage
     ? `<div style="background:#EFF6FF;border-left:4px solid #6366F1;border-radius:8px;padding:16px;margin:0 0 20px;">
         <p style="margin:0 0 4px;font-weight:600;color:#3730A3;">📌 Message from Admin</p>
@@ -81,22 +105,21 @@ const buildEmailHtml = async (user, options = {}) => {
 <body style="margin:0;padding:0;background:#F8FAFC;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
 <div style="max-width:600px;margin:0 auto;padding:24px 16px;">
 
-  <!-- Header -->
   <div style="background:linear-gradient(135deg,#6366F1 0%,#8B5CF6 100%);border-radius:16px;padding:32px;text-align:center;margin-bottom:24px;">
     <h1 style="margin:0 0 4px;color:#fff;font-size:26px;">Good Morning, ${user.name}! 🌄</h1>
     <p style="margin:0;color:#C7D2FE;font-size:14px;">${formatDate()}</p>
     ${cfg.showStreak ? `
     <div style="display:flex;justify-content:center;gap:32px;margin-top:16px;">
       <div style="color:#fff;text-align:center;">
-        <div style="font-size:24px;font-weight:700;">${user.streak || 0}</div>
+        <div style="font-size:24px;font-weight:700;">${user.streak||0}</div>
         <div style="font-size:12px;color:#C7D2FE;">Day Streak 🔥</div>
       </div>
       <div style="color:#fff;text-align:center;">
-        <div style="font-size:24px;font-weight:700;">${Math.round(user.totalStudyHours || 0)}</div>
+        <div style="font-size:24px;font-weight:700;">${Math.round(user.totalStudyHours||0)}</div>
         <div style="font-size:12px;color:#C7D2FE;">Total Hours</div>
       </div>
       <div style="color:#fff;text-align:center;">
-        <div style="font-size:24px;font-weight:700;">${user.studyTarget || 2}h</div>
+        <div style="font-size:24px;font-weight:700;">${user.studyTarget||2}h</div>
         <div style="font-size:12px;color:#C7D2FE;">Today's Target</div>
       </div>
     </div>` : ''}
@@ -113,7 +136,7 @@ const buildEmailHtml = async (user, options = {}) => {
 
   ${dsa ? `
   <div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-    <h2 style="margin:0 0 4px;font-size:16px;color:#0F172A;">💻 DSA Challenge — Day ${dsa.dayNumber || '?'}</h2>
+    <h2 style="margin:0 0 4px;font-size:16px;color:#0F172A;">💻 DSA Challenge — Day ${dsa.dayNumber||'?'}</h2>
     <p style="margin:0 0 12px;color:#64748B;font-size:13px;">${dsa.topic}</p>
     <div style="background:#F8FAFC;border-radius:8px;padding:14px;border-left:4px solid ${dsa.difficulty==='Easy'?'#10B981':dsa.difficulty==='Medium'?'#F59E0B':'#EF4444'};">
       <div style="margin-bottom:8px;">
@@ -155,7 +178,7 @@ const buildEmailHtml = async (user, options = {}) => {
   </div>` : ''}
 
   <div style="text-align:center;color:#94A3B8;font-size:13px;padding-bottom:16px;">
-    <p style="margin:0 0 4px;">${cfg.footerText || 'Keep going! Every line of code counts. 💜'}</p>
+    <p style="margin:0 0 4px;">${cfg.footerText||'Keep going! Every line of code counts. 💜'}</p>
     <p style="margin:0;">StudyTrack Nepal 🇳🇵</p>
   </div>
 </div>
@@ -166,33 +189,30 @@ const buildEmailHtml = async (user, options = {}) => {
 // ── Send daily email ───────────────────────────────────────────────────────────
 const sendDailyEmailToUser = async (user, options = {}) => {
   if (!user.emailReminders) return;
-  if (!process.env.RESEND_API_KEY) {
-    console.log('⚠️  RESEND_API_KEY not set — skipping email for', user.email);
+  if (!process.env.BREVO_API_KEY) {
+    console.log('⚠️  BREVO_API_KEY not set — skipping email for', user.email);
     return;
   }
-  const resend  = new Resend(process.env.RESEND_API_KEY);
   const cfg     = await EmailSettings.getSingleton();
   const html    = await buildEmailHtml(user, options);
   const subject = cfg.customSubject
     ? cfg.customSubject.replace('{{name}}', user.name).replace('{{day}}', getDayName())
     : `📚 Good Morning ${user.name}! Study plan for ${getDayName()}`;
 
-  const { data, error } = await resend.emails.send({
-    from:    'StudyTrack Nepal <onboarding@resend.dev>',
-    to:      user.email,
+  await brevoPost({
+    sender:      { name: process.env.BREVO_FROM_NAME || 'StudyTrack Nepal', email: process.env.BREVO_FROM_EMAIL },
+    to:          [{ email: user.email, name: user.name }],
     subject,
-    html,
+    htmlContent: html,
   });
-  if (error) throw new Error(error.message);
-  console.log(`✅ Daily email sent to ${user.email} — id: ${data.id}`);
+  console.log(`✅ Daily email sent to ${user.email}`);
 };
 
 // ── Send assignment reminder ───────────────────────────────────────────────────
 const sendAssignmentReminderToUser = async (user, assignment) => {
   if (!user.emailReminders) return;
-  if (!process.env.RESEND_API_KEY) return;
+  if (!process.env.BREVO_API_KEY) return;
 
-  const resend  = new Resend(process.env.RESEND_API_KEY);
   const dueDate = new Date(assignment.dueDate);
   const days    = Math.ceil((dueDate - Date.now()) / 86400000);
   const urgency = days <= 1 ? '#EF4444' : days <= 2 ? '#F59E0B' : '#6366F1';
@@ -213,7 +233,7 @@ const sendAssignmentReminderToUser = async (user, assignment) => {
     <p style="margin:0 0 16px;font-weight:600;color:#0F172A;font-size:16px;">${assignment.title}</p>
     <p style="margin:0 0 6px;font-size:13px;color:#64748B;">Due Date</p>
     <p style="margin:0;font-weight:600;color:${urgency};font-size:16px;">
-      ${dueDate.toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}
+      ${dueDate.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}
     </p>
   </div>
   <p style="text-align:center;color:#94A3B8;font-size:12px;margin-top:16px;">StudyTrack Nepal 🇳🇵</p>
@@ -221,13 +241,12 @@ const sendAssignmentReminderToUser = async (user, assignment) => {
 </body>
 </html>`;
 
-  const { data, error } = await resend.emails.send({
-    from:    'StudyTrack Nepal <onboarding@resend.dev>',
-    to:      user.email,
-    subject: `⚠️ Assignment ${dueLabel}: ${assignment.title} — ${assignment.subject}`,
-    html,
+  await brevoPost({
+    sender:      { name: process.env.BREVO_FROM_NAME || 'StudyTrack Nepal', email: process.env.BREVO_FROM_EMAIL },
+    to:          [{ email: user.email, name: user.name }],
+    subject:     `⚠️ Assignment ${dueLabel}: ${assignment.title} — ${assignment.subject}`,
+    htmlContent: html,
   });
-  if (error) throw new Error(error.message);
   console.log(`✅ Assignment reminder sent to ${user.email}`);
 };
 
