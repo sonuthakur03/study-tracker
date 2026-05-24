@@ -130,53 +130,7 @@ export default function College() {
           {/* SCHEDULE TAB */}
           {tab === 'schedule' && (
             <div className="space-y-4">
-              <div className="flex justify-end">
-                <button onClick={() => setShowSchedForm(p => !p)} className="btn-primary flex items-center gap-2">
-                  <Plus size={16} /> Add Class
-                </button>
-              </div>
-
-              {showSchedForm && (
-                <div className="card border-indigo-100 space-y-3">
-                  <h3 className="font-semibold text-slate-900">Add New Class</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Day</label>
-                      <select className="input" value={schedForm.day} onChange={e => setSchedForm(p => ({ ...p, day: e.target.value }))}>
-                        {DAYS.map(d => <option key={d}>{d}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Subject</label>
-                      <input className="input" list="subjects" placeholder="Artificial Intelligence" value={schedForm.subject}
-                        onChange={e => setSchedForm(p => ({ ...p, subject: e.target.value }))} />
-                      <datalist id="subjects">{globalSubjects.map(s => <option key={s._id} value={s.name} />)}</datalist>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Start Time</label>
-                      <input type="time" className="input" value={schedForm.startTime} onChange={e => setSchedForm(p => ({ ...p, startTime: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">End Time</label>
-                      <input type="time" className="input" value={schedForm.endTime} onChange={e => setSchedForm(p => ({ ...p, endTime: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Room</label>
-                      <input className="input" placeholder="Room 101" value={schedForm.room} onChange={e => setSchedForm(p => ({ ...p, room: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Type</label>
-                      <select className="input" value={schedForm.type} onChange={e => setSchedForm(p => ({ ...p, type: e.target.value }))}>
-                        <option>lecture</option><option>lab</option><option>tutorial</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={addSchedule} className="btn-primary text-sm">Add Class</button>
-                    <button onClick={() => setShowSchedForm(false)} className="btn-secondary text-sm">Cancel</button>
-                  </div>
-                </div>
-              )}
+              <span className="text-xs text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">Admin manages schedule</span>
 
               {/* Weekly timetable */}
               <div className="space-y-3">
@@ -202,9 +156,7 @@ export default function College() {
                                 {c.room && <span className="text-xs text-slate-400 ml-2">{c.room}</span>}
                               </div>
                               <span className={`text-xs px-2 py-0.5 rounded-full ${c.type === 'lab' ? 'bg-green-100 text-green-700' : c.type === 'tutorial' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{c.type}</span>
-                              <button onClick={() => deleteSchedule(c._id)} className="text-slate-300 hover:text-red-400 transition-colors">
-                                <Trash2 size={14} />
-                              </button>
+
                             </div>
                           ))}
                         </div>
@@ -219,50 +171,7 @@ export default function College() {
           {/* ASSIGNMENTS TAB */}
           {tab === 'assignments' && (
             <div className="space-y-4">
-              <div className="flex justify-end">
-                <button onClick={() => setShowAssignForm(p => !p)} className="btn-primary flex items-center gap-2">
-                  <Plus size={16} /> Add Assignment
-                </button>
-              </div>
-
-              {showAssignForm && (
-                <div className="card border-indigo-100 space-y-3">
-                  <h3 className="font-semibold text-slate-900">Add Assignment</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Subject</label>
-                      <input className="input" list="asgn-subjects" placeholder="Artificial Intelligence" value={assignForm.subject}
-                        onChange={e => setAssignForm(p => ({ ...p, subject: e.target.value }))} />
-                      <datalist id="asgn-subjects">{globalSubjects.map(s => <option key={s._id} value={s.name} />)}</datalist>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Title</label>
-                      <input className="input" placeholder="Lab report / Assignment 2" value={assignForm.title}
-                        onChange={e => setAssignForm(p => ({ ...p, title: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Due Date</label>
-                      <input type="date" className="input" value={assignForm.dueDate}
-                        onChange={e => setAssignForm(p => ({ ...p, dueDate: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Priority</label>
-                      <select className="input" value={assignForm.priority} onChange={e => setAssignForm(p => ({ ...p, priority: e.target.value }))}>
-                        <option>low</option><option>medium</option><option>high</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
-                    <textarea className="input resize-none h-16" placeholder="Details…" value={assignForm.description}
-                      onChange={e => setAssignForm(p => ({ ...p, description: e.target.value }))} />
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={addAssignment} className="btn-primary text-sm">Add Assignment</button>
-                    <button onClick={() => setShowAssignForm(false)} className="btn-secondary text-sm">Cancel</button>
-                  </div>
-                </div>
-              )}
+              <span className="text-xs text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">Admin assigns work</span>
 
               {/* Pending */}
               {pendingAssignments.length > 0 && (
@@ -288,9 +197,7 @@ export default function College() {
                               <span className="text-xs text-slate-400">{format(new Date(a.dueDate), 'MMM d, yyyy')}</span>
                             </div>
                           </div>
-                          <button onClick={() => deleteAssignment(a._id)} className="text-slate-300 hover:text-red-400 transition-colors flex-shrink-0">
-                            <Trash2 size={14} />
-                          </button>
+
                         </div>
                       );
                     })}
@@ -312,9 +219,7 @@ export default function College() {
                           <p className="text-sm text-slate-500 line-through">{a.title}</p>
                           <p className="text-xs text-slate-400">{a.subject}</p>
                         </div>
-                        <button onClick={() => deleteAssignment(a._id)} className="text-slate-200 hover:text-red-400 transition-colors">
-                          <Trash2 size={14} />
-                        </button>
+
                       </div>
                     ))}
                   </div>

@@ -18,6 +18,7 @@ const navItems = [
 
 const adminItems = [
   { to: '/admin',          label: 'Admin Dashboard' },
+  { to: '/admin/tasks',     label: 'Tasks & Schedule' },
   { to: '/admin/dsa',      label: 'Manage DSA' },
   { to: '/admin/roadmap',  label: 'Manage Roadmap' },
   { to: '/admin/users',    label: 'Manage Users' },

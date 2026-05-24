@@ -19,6 +19,7 @@ import ManageDSA from './pages/admin/ManageDSA';
 import ManageRoadmap from './pages/admin/ManageRoadmap';
 import ManageUsers from './pages/admin/ManageUsers';
 import ManageSubjects from './pages/admin/ManageSubjects';
+import ManageTasks from './pages/admin/ManageTasks';
 import EmailSettingsPage from './pages/admin/EmailSettings';
 
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="admin/roadmap" element={<ProtectedRoute adminOnly><ManageRoadmap /></ProtectedRoute>} />
             <Route path="admin/users"     element={<ProtectedRoute adminOnly><ManageUsers /></ProtectedRoute>} />
             <Route path="admin/subjects"  element={<ProtectedRoute adminOnly><ManageSubjects /></ProtectedRoute>} />
+            <Route path="admin/tasks"     element={<ProtectedRoute adminOnly><ManageTasks /></ProtectedRoute>} />
             <Route path="admin/email"     element={<ProtectedRoute adminOnly><EmailSettingsPage /></ProtectedRoute>} />
           </Route>
 
