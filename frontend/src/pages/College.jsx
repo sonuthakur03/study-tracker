@@ -13,6 +13,7 @@ const SUBJECTS_BCA5 = ['Artificial Intelligence','Data Warehousing & Data Mining
 export default function College() {
   const [schedule, setSchedule]     = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [globalSubjects, setGlobalSubjects] = useState([]);
   const [tab, setTab]               = useState('schedule');
   const [loading, setLoading]       = useState(true);
   const [showSchedForm, setShowSchedForm] = useState(false);
@@ -25,9 +26,11 @@ export default function College() {
     Promise.all([
       API.get('/college/schedule'),
       API.get('/college/assignments'),
-    ]).then(([s, a]) => {
+      API.get('/college/global-subjects'),
+    ]).then(([s, a, gs]) => {
       setSchedule(s.data);
       setAssignments(a.data);
+      setGlobalSubjects(gs.data);
     }).catch(() => toast.error('Failed to load college data'))
       .finally(() => setLoading(false));
   }, []);
@@ -147,7 +150,7 @@ export default function College() {
                       <label className="block text-xs font-medium text-slate-600 mb-1">Subject</label>
                       <input className="input" list="subjects" placeholder="Artificial Intelligence" value={schedForm.subject}
                         onChange={e => setSchedForm(p => ({ ...p, subject: e.target.value }))} />
-                      <datalist id="subjects">{SUBJECTS_BCA5.map(s => <option key={s} value={s} />)}</datalist>
+                      <datalist id="subjects">{globalSubjects.map(s => <option key={s._id} value={s.name} />)}</datalist>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-600 mb-1">Start Time</label>
@@ -230,7 +233,7 @@ export default function College() {
                       <label className="block text-xs font-medium text-slate-600 mb-1">Subject</label>
                       <input className="input" list="asgn-subjects" placeholder="Artificial Intelligence" value={assignForm.subject}
                         onChange={e => setAssignForm(p => ({ ...p, subject: e.target.value }))} />
-                      <datalist id="asgn-subjects">{SUBJECTS_BCA5.map(s => <option key={s} value={s} />)}</datalist>
+                      <datalist id="asgn-subjects">{globalSubjects.map(s => <option key={s._id} value={s.name} />)}</datalist>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-600 mb-1">Title</label>

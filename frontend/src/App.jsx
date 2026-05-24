@@ -18,6 +18,8 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import ManageDSA from './pages/admin/ManageDSA';
 import ManageRoadmap from './pages/admin/ManageRoadmap';
 import ManageUsers from './pages/admin/ManageUsers';
+import ManageSubjects from './pages/admin/ManageSubjects';
+import EmailSettingsPage from './pages/admin/EmailSettings';
 
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, loading } = useAuth();
@@ -58,7 +60,9 @@ export default function App() {
             <Route path="admin" element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
             <Route path="admin/dsa" element={<ProtectedRoute adminOnly><ManageDSA /></ProtectedRoute>} />
             <Route path="admin/roadmap" element={<ProtectedRoute adminOnly><ManageRoadmap /></ProtectedRoute>} />
-            <Route path="admin/users" element={<ProtectedRoute adminOnly><ManageUsers /></ProtectedRoute>} />
+            <Route path="admin/users"     element={<ProtectedRoute adminOnly><ManageUsers /></ProtectedRoute>} />
+            <Route path="admin/subjects"  element={<ProtectedRoute adminOnly><ManageSubjects /></ProtectedRoute>} />
+            <Route path="admin/email"     element={<ProtectedRoute adminOnly><EmailSettingsPage /></ProtectedRoute>} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

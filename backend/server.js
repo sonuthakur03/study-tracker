@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('./models/adminModels'); // register AdminSubject + EmailSettings
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -23,6 +24,7 @@ app.use('/api/roadmap',  require('./routes/roadmap'));
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api/college',  require('./routes/college'));
 app.use('/api/subjects', require('./routes/subjects'));
+app.use('/api/seed',     require('./routes/seed'));
 app.use('/api/admin',    require('./routes/admin'));
 
 // Global error handler

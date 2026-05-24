@@ -21,6 +21,8 @@ const adminItems = [
   { to: '/admin/dsa',      label: 'Manage DSA' },
   { to: '/admin/roadmap',  label: 'Manage Roadmap' },
   { to: '/admin/users',    label: 'Manage Users' },
+  { to: '/admin/subjects',  label: 'Manage Subjects' },
+  { to: '/admin/email',     label: 'Email Controls' },
 ];
 
 export default function Layout() {
