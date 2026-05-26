@@ -8,20 +8,18 @@ const adminSubjectSchema = new mongoose.Schema({
   color:       { type: String, default: '#6366F1' },
   description: { type: String },
   topics: [{
-    title: { type: String, required: true },
-    order: { type: Number, default: 0 },
+    title:       { type: String, required: true },
+    order:       { type: Number, default: 0 },
+    completedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
-// ── Email settings (singleton — only ever 1 document) ────────────────────────
+// ── Email settings (singleton) ────────────────────────────────────────────────
 const emailSettingsSchema = new mongoose.Schema({
-  // Admin's custom daily message shown at top of every email
   dailyMessage:    { type: String, default: '' },
   footerText:      { type: String, default: 'Keep going! Every line of code counts. 💜' },
-  customSubject:   { type: String, default: '' }, // overrides default subject line if set
-
-  // Toggle email sections on/off
+  customSubject:   { type: String, default: '' },
   showStreak:      { type: Boolean, default: true },
   showTasks:       { type: Boolean, default: true },
   showDSA:         { type: Boolean, default: true },
@@ -29,11 +27,10 @@ const emailSettingsSchema = new mongoose.Schema({
   showAssignments: { type: Boolean, default: true },
 }, { timestamps: true });
 
-// Helper: get or create the single EmailSettings document
 emailSettingsSchema.statics.getSingleton = async function () {
-  let settings = await this.findOne();
-  if (!settings) settings = await this.create({});
-  return settings;
+  let s = await this.findOne();
+  if (!s) s = await this.create({});
+  return s;
 };
 
 module.exports = {
