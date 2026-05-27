@@ -95,46 +95,6 @@ router.delete('/subjects/:id/topics/:topicId', async (req, res) => {
 });
 
 
-// ── Resources inside a subject ────────────────────────────────────────────────
-router.post('/subjects/:id/resources', async (req, res) => {
-  try {
-    const { title, url, category, language, description } = req.body;
-    if (!title || !url) return res.status(400).json({ message: 'Title and URL required' });
-    const subject = await AdminSubject.findById(req.params.id);
-    if (!subject) return res.status(404).json({ message: 'Subject not found' });
-    subject.resources.push({ title, url, category, language, description });
-    await subject.save();
-    res.status(201).json(subject);
-  } catch (err) { res.status(400).json({ message: err.message }); }
-});
-
-router.put('/subjects/:id/resources/:resourceId', async (req, res) => {
-  try {
-    const subject = await AdminSubject.findById(req.params.id);
-    if (!subject) return res.status(404).json({ message: 'Subject not found' });
-    const resource = subject.resources.id(req.params.resourceId);
-    if (!resource) return res.status(404).json({ message: 'Resource not found' });
-    const allowed = ['title', 'url', 'category', 'language', 'description'];
-    allowed.forEach(f => { if (req.body[f] !== undefined) resource[f] = req.body[f]; });
-    await subject.save();
-    res.json(subject);
-  } catch (err) {
-    console.error('ADD RESOURCE ERROR:', err.message, err);
-    res.status(400).json({ message: err.message });
-  }
-});
-
-router.delete('/subjects/:id/resources/:resourceId', async (req, res) => {
-  try {
-    const subject = await AdminSubject.findById(req.params.id);
-    if (!subject) return res.status(404).json({ message: 'Subject not found' });
-    subject.resources = subject.resources.filter(r => r._id.toString() !== req.params.resourceId);
-    await subject.save();
-    res.json(subject);
-  } catch (err) { res.status(500).json({ message: err.message }); }
-});
-
-
 // Resources inside a subject
 router.post('/subjects/:id/resources', async (req, res) => {
   try {
