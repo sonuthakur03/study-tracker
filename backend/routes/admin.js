@@ -118,7 +118,10 @@ router.put('/subjects/:id/resources/:resourceId', async (req, res) => {
     allowed.forEach(f => { if (req.body[f] !== undefined) resource[f] = req.body[f]; });
     await subject.save();
     res.json(subject);
-  } catch (err) { res.status(400).json({ message: err.message }); }
+  } catch (err) {
+    console.error('ADD RESOURCE ERROR:', err.message, err);
+    res.status(400).json({ message: err.message });
+  }
 });
 
 router.delete('/subjects/:id/resources/:resourceId', async (req, res) => {
@@ -137,13 +140,29 @@ router.post('/subjects/:id/resources', async (req, res) => {
   try {
     const { name, url, resourceType, language } = req.body;
     if (!name || !url) return res.status(400).json({ message: 'Name and URL required' });
-    const subject = await AdminSubject.findById(req.params.id);
+
+    // Use $push directly — works even if resources array did not exist on old documents
+    const mongoose = require('mongoose');
+    const resource  = {
+      _id:          new mongoose.Types.ObjectId(),
+      name,
+      url,
+      resourceType: resourceType || 'video',
+      language:     language     || 'English',
+    };
+
+    const subject = await AdminSubject.findByIdAndUpdate(
+      req.params.id,
+      { $push: { resources: resource } },
+      { new: true }
+    );
+
     if (!subject) return res.status(404).json({ message: 'Subject not found' });
-    if (!subject.resources) subject.resources = []; // handle docs created before resources field
-    subject.resources.push({ name, url, resourceType: resourceType || 'video', language: language || 'English' });
-    await subject.save();
     res.status(201).json(subject);
-  } catch (err) { res.status(400).json({ message: err.message }); }
+  } catch (err) {
+    console.error('ADD RESOURCE ERROR:', err.message);
+    res.status(500).json({ message: err.message });
+  }
 });
 
 router.delete('/subjects/:id/resources/:resourceId', async (req, res) => {
