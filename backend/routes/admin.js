@@ -139,6 +139,7 @@ router.post('/subjects/:id/resources', async (req, res) => {
     if (!name || !url) return res.status(400).json({ message: 'Name and URL required' });
     const subject = await AdminSubject.findById(req.params.id);
     if (!subject) return res.status(404).json({ message: 'Subject not found' });
+    if (!subject.resources) subject.resources = []; // handle docs created before resources field
     subject.resources.push({ name, url, resourceType: resourceType || 'video', language: language || 'English' });
     await subject.save();
     res.status(201).json(subject);
