@@ -6,7 +6,7 @@ import { Bell, User, Lock, Target } from 'lucide-react';
 
 export default function Settings() {
   const { user, updateUser } = useAuth();
-  const [profile, setProfile] = useState({ name: user?.name||'', college: user?.college||'', semester: user?.semester||'5th', selectedPath: user?.selectedPath||'both' });
+  const [profile, setProfile] = useState({ name: user?.name||'', college: user?.college||'TU BCA', semester: user?.semester||'6th', selectedPath: user?.selectedPath||'both' });
   const [prefs, setPrefs]     = useState({ emailReminders: user?.emailReminders ?? true, studyTarget: user?.studyTarget || 2, reminderTime: user?.reminderTime || '07:00' });
   const [passwd, setPasswd]   = useState({ currentPassword:'', newPassword:'', confirm:'' });
   const [saving, setSaving]   = useState('');

@@ -2,35 +2,90 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import API from '../api/axios';
 import toast from 'react-hot-toast';
-import { Flame, Clock, CheckCircle, Target, BookOpen, TrendingUp, Circle } from 'lucide-react';
+import {
+  Flame, Clock, CheckCircle, Target, BookOpen, TrendingUp, Circle, Plus, Trash2, X
+} from 'lucide-react';
 
-const today    = new Date().toISOString().slice(0, 10);
-const dayName  = new Date().toLocaleDateString('en-US', { weekday:'long' });
+const today = new Date().toISOString().slice(0, 10);
+const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 const TYPE_COLORS = {
-  aiml:'bg-purple-100 text-purple-700', de:'bg-teal-100 text-teal-700',
-  college:'bg-blue-100 text-blue-700',  dsa:'bg-orange-100 text-orange-700',
-  project:'bg-green-100 text-green-700', general:'bg-slate-100 text-slate-600',
+  aiml:    'bg-purple-100 text-purple-700',
+  de:      'bg-teal-100 text-teal-700',
+  college: 'bg-blue-100 text-blue-700',
+  dsa:     'bg-orange-100 text-orange-700',
+  project: 'bg-green-100 text-green-700',
+  general: 'bg-slate-100 text-slate-600',
+};
+
+const EMPTY_TASK = {
+  title: '',
+  description: '',
+  type: 'general',
+  priority: 'medium',
+  estimatedMinutes: 60,
+  date: today,
 };
 
 export default function Dashboard() {
   const { user, updateUser } = useAuth();
-  const [tasks, setTasks]     = useState([]);
+  const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hoursInput, setHoursInput]   = useState('');
+  const [hoursInput, setHoursInput] = useState('');
   const [loggingHours, setLoggingHours] = useState(false);
 
-  useEffect(() => {
+  // New Task Modal
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [taskForm, setTaskForm] = useState(EMPTY_TASK);
+  const [creatingTask, setCreatingTask] = useState(false);
+
+  const fetchTasks = () => {
     API.get(`/tasks?date=${today}`)
-      .then(r => setTasks(r.data))
+      .then((r) => setTasks(r.data))
       .catch(() => toast.error('Failed to load tasks'))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchTasks();
   }, []);
 
-  const toggleTask = async (task) => {
+  const toggleTask = async (task, e) => {
+    e.stopPropagation();
     try {
       const res = await API.put(`/tasks/${task._id}`, { completed: !task.completed });
-      setTasks(p => p.map(t => t._id === task._id ? res.data : t));
-    } catch { toast.error('Failed to update task'); }
+      setTasks((p) => p.map((t) => (t._id === task._id ? res.data : t)));
+    } catch {
+      toast.error('Failed to update task');
+    }
+  };
+
+  const deleteTask = async (taskId, e) => {
+    e.stopPropagation();
+    if (!confirm('Delete this task?')) return;
+    try {
+      await API.delete(`/tasks/${taskId}`);
+      setTasks((p) => p.filter((t) => t._id !== taskId));
+      toast.success('Task deleted');
+    } catch {
+      toast.error('Failed to delete task');
+    }
+  };
+
+  const handleCreateTask = async (e) => {
+    e.preventDefault();
+    if (!taskForm.title.trim()) return toast.error('Task title is required');
+    setCreatingTask(true);
+    try {
+      const res = await API.post('/tasks', taskForm);
+      setTasks((p) => [res.data, ...p]);
+      toast.success('Task created! 🎯');
+      setShowTaskModal(false);
+      setTaskForm(EMPTY_TASK);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to create task');
+    } finally {
+      setCreatingTask(false);
+    }
   };
 
   const logHours = async () => {
@@ -42,29 +97,35 @@ export default function Dashboard() {
       updateUser(res.data.user);
       setHoursInput('');
       toast.success(`Logged ${h} hours! 🔥`);
-    } catch { toast.error('Failed to log hours'); }
-    finally { setLoggingHours(false); }
+    } catch {
+      toast.error('Failed to log hours');
+    } finally {
+      setLoggingHours(false);
+    }
   };
 
-  const completedCount = tasks.filter(t => t.completed).length;
-  const progressPct    = tasks.length ? Math.round((completedCount / tasks.length) * 100) : 0;
-  const targetPct      = user?.studyTarget
-    ? Math.min(Math.round((user.todayStudyHours / user.studyTarget) * 100), 100) : 0;
+  const completedCount = tasks.filter((t) => t.completed).length;
+  const progressPct = tasks.length ? Math.round((completedCount / tasks.length) * 100) : 0;
+  const targetPct = user?.studyTarget
+    ? Math.min(Math.round((user.todayStudyHours / user.studyTarget) * 100), 100)
+    : 0;
 
   return (
     <div className="max-w-4xl mx-auto space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Good morning, {user?.name?.split(' ')[0]}! 👋</h1>
+        <h1 className="text-2xl font-bold text-slate-900">
+          Good morning, {user?.name?.split(' ')[0]}! 👋
+        </h1>
         <p className="text-slate-500 text-sm mt-1">{dayName} — keep the streak alive</p>
       </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { icon: Flame,      color:'bg-orange-100 text-orange-500', value: user?.streak||0,                              label:'Day streak' },
-          { icon: Clock,      color:'bg-indigo-100 text-indigo-500', value: (user?.todayStudyHours||0).toFixed(1),        label:'Hours today' },
-          { icon: CheckCircle,color:'bg-green-100 text-green-500',   value: `${completedCount}/${tasks.length}`,          label:'Tasks done' },
-          { icon: TrendingUp, color:'bg-purple-100 text-purple-500', value: Math.round(user?.totalStudyHours||0),         label:'Total hours' },
+          { icon: Flame, color: 'bg-orange-100 text-orange-500', value: user?.streak || 0, label: 'Day streak' },
+          { icon: Clock, color: 'bg-indigo-100 text-indigo-500', value: (user?.todayStudyHours || 0).toFixed(1), label: 'Hours today' },
+          { icon: CheckCircle, color: 'bg-green-100 text-green-500', value: `${completedCount}/${tasks.length}`, label: 'Tasks done' },
+          { icon: TrendingUp, color: 'bg-purple-100 text-purple-500', value: Math.round(user?.totalStudyHours || 0), label: 'Total hours' },
         ].map(({ icon: Icon, color, value, label }) => (
           <div key={label} className="card flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
@@ -88,18 +149,31 @@ export default function Dashboard() {
               <span className="text-sm text-slate-500">{progressPct}%</span>
             </div>
             <div className="w-full bg-slate-100 rounded-full h-2.5">
-              <div className="bg-indigo-500 h-2.5 rounded-full transition-all" style={{ width:`${progressPct}%` }} />
+              <div
+                className="bg-indigo-500 h-2.5 rounded-full transition-all"
+                style={{ width: `${progressPct}%` }}
+              />
             </div>
             {progressPct === 100 && tasks.length > 0 && (
-              <p className="text-xs text-green-600 mt-2 font-medium">🎉 All tasks completed! Great work today.</p>
+              <p className="text-xs text-green-600 mt-2 font-medium">
+                🎉 All tasks completed! Great work today.
+              </p>
             )}
           </div>
 
-          {/* Tasks — view only, tick to complete */}
+          {/* Tasks Container */}
           <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-slate-900">Today's Tasks</h2>
-              <span className="text-xs text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">Admin assigns tasks</span>
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <div>
+                <h2 className="font-semibold text-slate-900">Today's Tasks</h2>
+                <p className="text-xs text-slate-400">Created by you and assigned by admin</p>
+              </div>
+              <button
+                onClick={() => setShowTaskModal(true)}
+                className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5 shadow-sm"
+              >
+                <Plus size={14} /> Add Task
+              </button>
             </div>
 
             {loading ? (
@@ -108,33 +182,74 @@ export default function Dashboard() {
               <div className="text-center py-8">
                 <CheckCircle size={32} className="mx-auto text-slate-200 mb-2" />
                 <p className="text-slate-400 text-sm">No tasks for today yet.</p>
-                <p className="text-slate-300 text-xs mt-1">Your admin will push tasks soon.</p>
+                <button
+                  onClick={() => setShowTaskModal(true)}
+                  className="btn-secondary text-xs mt-3 inline-flex items-center gap-1"
+                >
+                  <Plus size={13} /> Add your first task
+                </button>
               </div>
             ) : (
               <div className="space-y-2">
-                {tasks.map(task => (
-                  <div key={task._id}
-                    className={`flex items-start gap-3 p-3 rounded-xl border transition-colors cursor-pointer ${task.completed ? 'bg-slate-50 border-slate-100' : 'bg-white border-slate-100 hover:border-slate-200'}`}
-                    onClick={() => toggleTask(task)}>
-                    <div className="mt-0.5 flex-shrink-0">
-                      {task.completed
-                        ? <CheckCircle size={20} className="text-green-500" />
-                        : <Circle size={20} className="text-slate-300 hover:text-indigo-400 transition-colors" />}
-                    </div>
+                {tasks.map((task) => (
+                  <div
+                    key={task._id}
+                    className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${
+                      task.completed
+                        ? 'bg-slate-50 border-slate-100'
+                        : 'bg-white border-slate-100 hover:border-slate-200'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      className="mt-0.5 flex-shrink-0"
+                      onClick={(e) => toggleTask(task, e)}
+                    >
+                      {task.completed ? (
+                        <CheckCircle size={20} className="text-green-500" />
+                      ) : (
+                        <Circle size={20} className="text-slate-300 hover:text-indigo-400 transition-colors" />
+                      )}
+                    </button>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium ${task.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                      <p
+                        className={`text-sm font-medium ${
+                          task.completed ? 'line-through text-slate-400' : 'text-slate-800'
+                        }`}
+                      >
                         {task.title}
                       </p>
                       {task.description && (
                         <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{task.description}</p>
                       )}
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[task.type] || TYPE_COLORS.general}`}>
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <span
+                          className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                            TYPE_COLORS[task.type] || TYPE_COLORS.general
+                          }`}
+                        >
                           {task.type}
                         </span>
-                        {task.priority === 'high' && <span className="text-xs text-red-500 font-medium">High priority</span>}
+                        {task.priority === 'high' && (
+                          <span className="text-[11px] text-red-500 font-semibold bg-red-50 px-1.5 py-0.5 rounded">
+                            High priority
+                          </span>
+                        )}
+                        {task.estimatedMinutes > 0 && (
+                          <span className="text-[11px] text-slate-400">
+                            {task.estimatedMinutes}m
+                          </span>
+                        )}
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={(e) => deleteTask(task._id, e)}
+                      className="p-1 text-slate-300 hover:text-red-500 transition-colors"
+                      title="Delete task"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -146,38 +261,65 @@ export default function Dashboard() {
         <div className="space-y-4">
           {/* Log hours */}
           <div className="card">
-            <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2"><Clock size={16} /> Log Study Hours</h3>
+            <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+              <Clock size={16} /> Log Study Hours
+            </h3>
             <div className="flex gap-2 mb-3">
-              <input type="number" min="0.5" max="12" step="0.5" className="input"
-                placeholder="e.g. 1.5" value={hoursInput} onChange={e => setHoursInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && logHours()} />
-              <button onClick={logHours} disabled={loggingHours} className="btn-primary text-sm whitespace-nowrap">Log</button>
+              <input
+                type="number"
+                min="0.5"
+                max="12"
+                step="0.5"
+                className="input"
+                placeholder="e.g. 1.5"
+                value={hoursInput}
+                onChange={(e) => setHoursInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && logHours()}
+              />
+              <button
+                onClick={logHours}
+                disabled={loggingHours}
+                className="btn-primary text-sm whitespace-nowrap"
+              >
+                Log
+              </button>
             </div>
             <div className="w-full bg-slate-100 rounded-full h-2">
-              <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width:`${targetPct}%` }} />
+              <div
+                className="bg-green-500 h-2 rounded-full transition-all"
+                style={{ width: `${targetPct}%` }}
+              />
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              {(user?.todayStudyHours||0).toFixed(1)} / {user?.studyTarget||2} hr target
+              {(user?.todayStudyHours || 0).toFixed(1)} / {user?.studyTarget || 2} hr target
             </p>
           </div>
 
           {/* Roadmap phase */}
           <div className="card">
-            <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2"><BookOpen size={16} /> Roadmap Phase</h3>
+            <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+              <BookOpen size={16} /> Roadmap Phase
+            </h3>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600">AI/ML</span>
-                <span className="font-medium text-indigo-600">Phase {(user?.aimlPhase||0)+1}/6</span>
+                <span className="font-medium text-indigo-600">Phase {(user?.aimlPhase || 0) + 1}/6</span>
               </div>
               <div className="w-full bg-slate-100 rounded-full h-1.5">
-                <div className="bg-indigo-500 h-1.5 rounded-full" style={{ width:`${(((user?.aimlPhase||0)+1)/6)*100}%` }} />
+                <div
+                  className="bg-indigo-500 h-1.5 rounded-full"
+                  style={{ width: `${(((user?.aimlPhase || 0) + 1) / 6) * 100}%` }}
+                />
               </div>
               <div className="flex justify-between text-sm mt-2">
                 <span className="text-slate-600">Data Eng</span>
-                <span className="font-medium text-teal-600">Phase {(user?.dePhase||0)+1}/6</span>
+                <span className="font-medium text-teal-600">Phase {(user?.dePhase || 0) + 1}/6</span>
               </div>
               <div className="w-full bg-slate-100 rounded-full h-1.5">
-                <div className="bg-teal-500 h-1.5 rounded-full" style={{ width:`${(((user?.dePhase||0)+1)/6)*100}%` }} />
+                <div
+                  className="bg-teal-500 h-1.5 rounded-full"
+                  style={{ width: `${(((user?.dePhase || 0) + 1) / 6) * 100}%` }}
+                />
               </div>
             </div>
           </div>
@@ -188,11 +330,127 @@ export default function Dashboard() {
               <Flame size={18} className="text-orange-500" />
               <span className="font-semibold text-orange-900">Study Streak</span>
             </div>
-            <p className="text-3xl font-bold text-orange-600">{user?.streak||0} days</p>
-            <p className="text-xs text-orange-500 mt-1">Best: {user?.longestStreak||0} days — keep going! 💪</p>
+            <p className="text-3xl font-bold text-orange-600">{user?.streak || 0} days</p>
+            <p className="text-xs text-orange-500 mt-1">
+              Best: {user?.longestStreak || 0} days — keep going! 💪
+            </p>
           </div>
         </div>
       </div>
+
+      {/* ── MODAL: ADD PERSONAL TASK ────────────────────────────────────────── */}
+      {showTaskModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-bold text-lg text-slate-900">Create Task</h3>
+              <button
+                onClick={() => setShowTaskModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTask} className="p-5 space-y-3.5">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Task Title *</label>
+                <input
+                  className="input"
+                  placeholder="e.g. Study Network Socket Programming & build chat app"
+                  value={taskForm.title}
+                  onChange={(e) => setTaskForm((p) => ({ ...p, title: e.target.value }))}
+                  autoFocus
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Description</label>
+                <textarea
+                  className="input resize-none h-16 text-xs"
+                  placeholder="Notes, references, or specific sub-goals…"
+                  value={taskForm.description}
+                  onChange={(e) => setTaskForm((p) => ({ ...p, description: e.target.value }))}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Category</label>
+                  <select
+                    className="input"
+                    value={taskForm.type}
+                    onChange={(e) => setTaskForm((p) => ({ ...p, type: e.target.value }))}
+                  >
+                    <option value="general">General</option>
+                    <option value="college">College (6th Sem)</option>
+                    <option value="dsa">DSA</option>
+                    <option value="aiml">AI / ML</option>
+                    <option value="de">Data Engineering</option>
+                    <option value="project">Project II</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Priority</label>
+                  <select
+                    className="input"
+                    value={taskForm.priority}
+                    onChange={(e) => setTaskForm((p) => ({ ...p, priority: e.target.value }))}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Date</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={taskForm.date}
+                    onChange={(e) => setTaskForm((p) => ({ ...p, date: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Est. Minutes</label>
+                  <input
+                    type="number"
+                    min="15"
+                    step="15"
+                    className="input"
+                    value={taskForm.estimatedMinutes}
+                    onChange={(e) =>
+                      setTaskForm((p) => ({
+                        ...p,
+                        estimatedMinutes: parseInt(e.target.value, 10) || 60,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-3 border-t">
+                <button type="submit" disabled={creatingTask} className="btn-primary flex-1">
+                  {creatingTask ? 'Adding…' : 'Add Task'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowTaskModal(false)}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

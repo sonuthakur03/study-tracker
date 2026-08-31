@@ -1,83 +1,47 @@
 import React, { useState, useEffect } from 'react';
 import API from '../api/axios';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, CheckCircle, Circle, AlertTriangle, Calendar, Clock, X } from 'lucide-react';
+import { CheckCircle, Circle, AlertTriangle, Calendar } from 'lucide-react';
 import { format, differenceInDays, isPast, isToday, isTomorrow } from 'date-fns';
 
-const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-const DAY_SHORT = { Monday:'Mon',Tuesday:'Tue',Wednesday:'Wed',Thursday:'Thu',Friday:'Fri',Saturday:'Sat',Sunday:'Sun' };
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const TODAY_DAY = DAYS[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
 
-const SUBJECTS_BCA5 = ['Artificial Intelligence','Data Warehousing & Data Mining','Distributed System','Internet & Intranet','Minor Project','Elective'];
+const SUBJECTS_BCA6 = [
+  'Mobile Programming',
+  'Distributed Systems',
+  'Applied Economics',
+  'Advanced Java Programming',
+  'Network Programming',
+  'Project II',
+];
 
 export default function College() {
-  const [schedule, setSchedule]     = useState([]);
+  const [schedule, setSchedule] = useState([]);
   const [assignments, setAssignments] = useState([]);
-  const [globalSubjects, setGlobalSubjects] = useState([]);
-  const [tab, setTab]               = useState('schedule');
-  const [loading, setLoading]       = useState(true);
-  const [showSchedForm, setShowSchedForm] = useState(false);
-  const [showAssignForm, setShowAssignForm] = useState(false);
-
-  const [schedForm, setSchedForm] = useState({ day:'Monday', subject:'', startTime:'09:00', endTime:'10:00', room:'', teacher:'', type:'lecture' });
-  const [assignForm, setAssignForm] = useState({ subject:'', title:'', description:'', dueDate:'', priority:'medium' });
+  const [tab, setTab] = useState('schedule');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       API.get('/college/schedule'),
       API.get('/college/assignments'),
-      API.get('/college/global-subjects'),
-    ]).then(([s, a, gs]) => {
-      setSchedule(s.data);
-      setAssignments(a.data);
-      setGlobalSubjects(gs.data);
-    }).catch(() => toast.error('Failed to load college data'))
+    ])
+      .then(([s, a]) => {
+        setSchedule(s.data);
+        setAssignments(a.data);
+      })
+      .catch(() => toast.error('Failed to load college data'))
       .finally(() => setLoading(false));
   }, []);
-
-  // Schedule
-  const addSchedule = async () => {
-    if (!schedForm.subject.trim()) return toast.error('Subject required');
-    try {
-      const res = await API.post('/college/schedule', schedForm);
-      setSchedule(p => [...p, res.data]);
-      setShowSchedForm(false);
-      toast.success('Class added');
-    } catch { toast.error('Failed to add class'); }
-  };
-
-  const deleteSchedule = async (id) => {
-    try {
-      await API.delete(`/college/schedule/${id}`);
-      setSchedule(p => p.filter(x => x._id !== id));
-    } catch { toast.error('Failed to delete'); }
-  };
-
-  // Assignments
-  const addAssignment = async () => {
-    if (!assignForm.subject.trim() || !assignForm.title.trim() || !assignForm.dueDate)
-      return toast.error('Subject, title and due date are required');
-    try {
-      const res = await API.post('/college/assignments', assignForm);
-      setAssignments(p => [...p, res.data]);
-      setShowAssignForm(false);
-      setAssignForm({ subject:'', title:'', description:'', dueDate:'', priority:'medium' });
-      toast.success('Assignment added');
-    } catch { toast.error('Failed to add assignment'); }
-  };
 
   const toggleAssignment = async (a) => {
     try {
       const res = await API.put(`/college/assignments/${a._id}`, { completed: !a.completed });
-      setAssignments(p => p.map(x => x._id === a._id ? res.data : x));
-    } catch { toast.error('Failed to update'); }
-  };
-
-  const deleteAssignment = async (id) => {
-    try {
-      await API.delete(`/college/assignments/${id}`);
-      setAssignments(p => p.filter(x => x._id !== id));
-    } catch { toast.error('Failed to delete'); }
+      setAssignments((p) => p.map((x) => (x._id === a._id ? res.data : x)));
+    } catch {
+      toast.error('Failed to update');
+    }
   };
 
   const getDueLabel = (date) => {
@@ -90,73 +54,115 @@ export default function College() {
   };
 
   const schedByDay = DAYS.reduce((acc, d) => {
-    acc[d] = schedule.filter(s => s.day === d).sort((a,b) => a.startTime.localeCompare(b.startTime));
+    acc[d] = schedule.filter((s) => s.day === d).sort((a, b) => a.startTime.localeCompare(b.startTime));
     return acc;
   }, {});
 
-  const pendingAssignments = assignments.filter(a => !a.completed);
-  const doneAssignments    = assignments.filter(a => a.completed);
+  const pendingAssignments = assignments.filter((a) => !a.completed);
+  const doneAssignments = assignments.filter((a) => a.completed);
 
   return (
     <div className="max-w-4xl mx-auto space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">College — BCA 5th Sem</h1>
+        <h1 className="text-2xl font-bold text-slate-900">College — BCA 6th Sem</h1>
         <p className="text-slate-500 text-sm mt-1">Timetable, assignments & semester goals at Tribhuvan University</p>
       </div>
 
-      {/* BCA 5th sem subjects quick ref */}
+      {/* BCA 6th sem subjects quick ref */}
       <div className="card bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-100">
-        <p className="text-sm font-semibold text-indigo-800 mb-2">📚 BCA 5th Sem — TU Subjects</p>
+        <p className="text-sm font-semibold text-indigo-800 mb-2">📚 BCA 6th Sem — TU Subjects</p>
         <div className="flex flex-wrap gap-2">
-          {SUBJECTS_BCA5.map(s => (
-            <span key={s} className="text-xs bg-white text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-full font-medium">{s}</span>
+          {SUBJECTS_BCA6.map((s) => (
+            <span key={s} className="text-xs bg-white text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-full font-medium shadow-sm">
+              {s}
+            </span>
           ))}
         </div>
-        <p className="text-xs text-indigo-500 mt-2">⚠ Verify with your official TU notice board — syllabus may vary by batch.</p>
+        <p className="text-xs text-indigo-500 mt-2">🎓 Official TU BCA Curriculum (Year III / Semester VI — 17 Credit Hours).</p>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-slate-100 pb-0">
-        {['schedule','assignments'].map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize -mb-px ${tab === t ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-            {t} {t === 'assignments' && pendingAssignments.length > 0 && <span className="ml-1.5 bg-red-100 text-red-600 text-xs px-1.5 py-0.5 rounded-full">{pendingAssignments.length}</span>}
+        {['schedule', 'assignments'].map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize -mb-px ${
+              tab === t ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {t}{' '}
+            {t === 'assignments' && pendingAssignments.length > 0 && (
+              <span className="ml-1.5 bg-red-100 text-red-600 text-xs px-1.5 py-0.5 rounded-full font-bold">
+                {pendingAssignments.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      {loading ? <div className="text-center py-12 text-slate-400">Loading…</div> : (
+      {loading ? (
+        <div className="text-center py-12 text-slate-400">Loading…</div>
+      ) : (
         <>
           {/* SCHEDULE TAB */}
           {tab === 'schedule' && (
             <div className="space-y-4">
-              <span className="text-xs text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">Admin manages schedule</span>
+              <span className="text-xs text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">
+                Admin manages schedule
+              </span>
 
               {/* Weekly timetable */}
               <div className="space-y-3">
-                {DAYS.filter(d => d !== 'Sunday').map(day => {
-                  const classes = schedByDay[day];
-                  const isToday = day === TODAY_DAY;
+                {DAYS.filter((d) => d !== 'Sunday').map((day) => {
+                  const classes = schedByDay[day] || [];
+                  const isCurrentDay = day === TODAY_DAY;
                   return (
-                    <div key={day} className={`rounded-xl border ${isToday ? 'border-indigo-200 bg-indigo-50/30' : 'border-slate-100 bg-white'} overflow-hidden`}>
-                      <div className={`px-4 py-2 flex items-center gap-2 border-b ${isToday ? 'bg-indigo-500 border-indigo-500' : 'bg-slate-50 border-slate-100'}`}>
-                        <span className={`text-sm font-semibold ${isToday ? 'text-white' : 'text-slate-700'}`}>{day}</span>
-                        {isToday && <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full">Today</span>}
-                        <span className={`text-xs ml-auto ${isToday ? 'text-indigo-100' : 'text-slate-400'}`}>{classes.length} class{classes.length !== 1 ? 'es' : ''}</span>
+                    <div
+                      key={day}
+                      className={`rounded-xl border ${
+                        isCurrentDay ? 'border-indigo-200 bg-indigo-50/30' : 'border-slate-100 bg-white'
+                      } overflow-hidden`}
+                    >
+                      <div
+                        className={`px-4 py-2 flex items-center gap-2 border-b ${
+                          isCurrentDay ? 'bg-indigo-500 border-indigo-500' : 'bg-slate-50 border-slate-100'
+                        }`}
+                      >
+                        <span className={`text-sm font-semibold ${isCurrentDay ? 'text-white' : 'text-slate-700'}`}>
+                          {day}
+                        </span>
+                        {isCurrentDay && (
+                          <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full">Today</span>
+                        )}
+                        <span className={`text-xs ml-auto ${isCurrentDay ? 'text-indigo-100' : 'text-slate-400'}`}>
+                          {classes.length} class{classes.length !== 1 ? 'es' : ''}
+                        </span>
                       </div>
                       {classes.length === 0 ? (
-                        <p className="text-xs text-slate-400 px-4 py-3">No classes — add some above</p>
+                        <p className="text-xs text-slate-400 px-4 py-3">No classes scheduled</p>
                       ) : (
                         <div className="divide-y divide-slate-50">
-                          {classes.map(c => (
+                          {classes.map((c) => (
                             <div key={c._id} className="flex items-center gap-3 px-4 py-2.5">
-                              <div className="text-xs text-slate-500 font-mono w-24 flex-shrink-0">{c.startTime}–{c.endTime}</div>
+                              <div className="text-xs text-slate-500 font-mono w-24 flex-shrink-0">
+                                {c.startTime}–{c.endTime}
+                              </div>
                               <div className="flex-1">
                                 <span className="text-sm font-medium text-slate-800">{c.subject}</span>
                                 {c.room && <span className="text-xs text-slate-400 ml-2">{c.room}</span>}
                               </div>
-                              <span className={`text-xs px-2 py-0.5 rounded-full ${c.type === 'lab' ? 'bg-green-100 text-green-700' : c.type === 'tutorial' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{c.type}</span>
-
+                              <span
+                                className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  c.type === 'lab'
+                                    ? 'bg-green-100 text-green-700'
+                                    : c.type === 'tutorial'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-blue-100 text-blue-700'
+                                }`}
+                              >
+                                {c.type}
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -171,14 +177,18 @@ export default function College() {
           {/* ASSIGNMENTS TAB */}
           {tab === 'assignments' && (
             <div className="space-y-4">
-              <span className="text-xs text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">Admin assigns work</span>
+              <span className="text-xs text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">
+                Admin assigns work
+              </span>
 
               {/* Pending */}
               {pendingAssignments.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-semibold text-slate-700 mb-2">Pending ({pendingAssignments.length})</h3>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-2">
+                    Pending ({pendingAssignments.length})
+                  </h3>
                   <div className="space-y-2">
-                    {pendingAssignments.map(a => {
+                    {pendingAssignments.map((a) => {
                       const due = getDueLabel(a.dueDate);
                       return (
                         <div key={a._id} className="card flex items-start gap-3 py-3.5">
@@ -194,10 +204,11 @@ export default function College() {
                             {a.description && <p className="text-xs text-slate-400 mt-1">{a.description}</p>}
                             <div className="flex items-center gap-3 mt-1.5">
                               <span className={`text-xs ${due.cls}`}>{due.label}</span>
-                              <span className="text-xs text-slate-400">{format(new Date(a.dueDate), 'MMM d, yyyy')}</span>
+                              <span className="text-xs text-slate-400">
+                                {format(new Date(a.dueDate), 'MMM d, yyyy')}
+                              </span>
                             </div>
                           </div>
-
                         </div>
                       );
                     })}
@@ -208,9 +219,11 @@ export default function College() {
               {/* Completed */}
               {doneAssignments.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-semibold text-slate-400 mb-2">Completed ({doneAssignments.length})</h3>
+                  <h3 className="text-sm font-semibold text-slate-400 mb-2">
+                    Completed ({doneAssignments.length})
+                  </h3>
                   <div className="space-y-2">
-                    {doneAssignments.map(a => (
+                    {doneAssignments.map((a) => (
                       <div key={a._id} className="card flex items-center gap-3 py-3 opacity-60">
                         <button onClick={() => toggleAssignment(a)}>
                           <CheckCircle size={20} className="text-green-500 flex-shrink-0" />
@@ -219,7 +232,6 @@ export default function College() {
                           <p className="text-sm text-slate-500 line-through">{a.title}</p>
                           <p className="text-xs text-slate-400">{a.subject}</p>
                         </div>
-
                       </div>
                     ))}
                   </div>

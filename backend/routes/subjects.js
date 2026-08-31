@@ -1,50 +1,57 @@
-const router   = require('express').Router();
+const router = require('express').Router();
 const { auth } = require('../middleware/auth');
 const { AdminSubject } = require('../models/adminModels');
+const asyncHandler = require('../middleware/asyncHandler');
 
 router.use(auth);
 
-// ── GET all admin subjects with per-user completion status ────────────────────
-router.get('/', async (req, res) => {
-  try {
-    const uid      = req.user._id;
-    const subjects = await AdminSubject.find().sort({ semester: 1, name: 1 });
+// GET /api/subjects — Get all admin subjects with per-user completion status
+router.get('/', asyncHandler(async (req, res) => {
+  const uid = req.user._id;
+  const subjects = await AdminSubject.find().sort({ semester: 1, name: 1 });
 
-    const withProgress = subjects.map(s => ({
-      ...s.toObject(),
-      topics: s.topics.map(t => ({
-        ...t.toObject(),
-        completed:   t.completedBy.map(id => id.toString()).includes(uid.toString()),
-        completedBy: undefined, // don't expose to client
-      })),
-    }));
+  const withProgress = subjects.map((s) => ({
+    ...s.toObject(),
+    topics: s.topics.map((t) => ({
+      ...t.toObject(),
+      completed: t.completedBy.some((id) => id.toString() === uid.toString()),
+      completedBy: undefined, // do not expose IDs to client
+    })),
+  }));
 
-    res.json(withProgress);
-  } catch (err) { res.status(500).json({ message: err.message }); }
-});
+  res.json(withProgress);
+}));
 
-// ── POST toggle a topic complete for current user ─────────────────────────────
-router.post('/:subjectId/topics/:topicId/toggle', async (req, res) => {
-  try {
-    const uid     = req.user._id;
-    const subject = await AdminSubject.findById(req.params.subjectId);
-    if (!subject) return res.status(404).json({ message: 'Subject not found' });
+// POST /api/subjects/:subjectId/topics/:topicId/toggle — User toggles topic complete (Atomic)
+router.post('/:subjectId/topics/:topicId/toggle', asyncHandler(async (req, res) => {
+  const uid = req.user._id;
+  const { subjectId, topicId } = req.params;
 
-    const topic = subject.topics.id(req.params.topicId);
-    if (!topic)   return res.status(404).json({ message: 'Topic not found' });
+  const subject = await AdminSubject.findById(subjectId);
+  if (!subject) return res.status(404).json({ message: 'Subject not found' });
 
-    const idx = topic.completedBy.map(id => id.toString()).indexOf(uid.toString());
-    if (idx > -1) topic.completedBy.splice(idx, 1);
-    else          topic.completedBy.push(uid);
+  const topic = subject.topics.id(topicId);
+  if (!topic) return res.status(404).json({ message: 'Topic not found' });
 
-    await subject.save();
+  const isCompleted = topic.completedBy.some((id) => id.toString() === uid.toString());
 
-    res.json({
-      completed: idx === -1,
-      topicId:   topic._id,
-      message:   idx === -1 ? 'Topic marked complete ✅' : 'Marked incomplete',
-    });
-  } catch (err) { res.status(500).json({ message: err.message }); }
-});
+  if (isCompleted) {
+    await AdminSubject.updateOne(
+      { _id: subjectId, 'topics._id': topicId },
+      { $pull: { 'topics.$.completedBy': uid } }
+    );
+  } else {
+    await AdminSubject.updateOne(
+      { _id: subjectId, 'topics._id': topicId },
+      { $addToSet: { 'topics.$.completedBy': uid } }
+    );
+  }
+
+  res.json({
+    completed: !isCompleted,
+    topicId,
+    message: !isCompleted ? 'Topic marked complete ✅' : 'Marked incomplete',
+  });
+}));
 
 module.exports = router;

@@ -2,49 +2,67 @@ const https = require('https');
 const { DSAQuestion, RoadmapTopic, Assignment, Task } = require('../models/index');
 const { EmailSettings } = require('../models/adminModels');
 
-// ── Brevo HTTP helper (no extra dependencies) ─────────────────────────────────
-const brevoPost = (data) => new Promise((resolve, reject) => {
-  const body = JSON.stringify(data);
-  const req  = https.request({
-    hostname: 'api.brevo.com',
-    path:     '/v3/smtp/email',
-    method:   'POST',
-    headers:  {
-      'api-key':        process.env.BREVO_API_KEY,
-      'Content-Type':   'application/json',
-      'Content-Length': Buffer.byteLength(body),
-    },
-  }, (res) => {
-    let raw = '';
-    res.on('data', c => raw += c);
-    res.on('end', () => {
-      if (res.statusCode >= 200 && res.statusCode < 300) resolve(JSON.parse(raw));
-      else reject(new Error(`Brevo ${res.statusCode}: ${raw}`));
-    });
+// ── Brevo HTTP helper (native HTTPS, zero external dependencies) ─────────────
+const brevoPost = (data) =>
+  new Promise((resolve, reject) => {
+    const body = JSON.stringify(data);
+    const req = https.request(
+      {
+        hostname: 'api.brevo.com',
+        path: '/v3/smtp/email',
+        method: 'POST',
+        headers: {
+          'api-key': process.env.BREVO_API_KEY,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        let raw = '';
+        res.on('data', (c) => (raw += c));
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(JSON.parse(raw || '{}'));
+          } else {
+            reject(new Error(`Brevo ${res.statusCode}: ${raw}`));
+          }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.write(body);
+    req.end();
   });
-  req.on('error', reject);
-  req.write(body);
-  req.end();
-});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const getDayName = () =>
-  ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
+  ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][
+    new Date().getDay()
+  ];
 
 const formatDate = () =>
-  new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 
 const getDSAOfDay = async () => {
   const questions = await DSAQuestion.find().sort({ dayNumber: 1 });
   if (!questions.length) return null;
-  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
+  const dayOfYear = Math.floor(
+    (Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000
+  );
   return questions[dayOfYear % questions.length];
 };
 
 const getNextTopic = async (user, path) => {
   const phase = path === 'aiml' ? user.aimlPhase : user.dePhase;
   return RoadmapTopic.findOne({
-    path, phase: { $gte: phase }, completedBy: { $nin: [user._id] },
+    path,
+    phase: { $gte: phase },
+    completedBy: { $nin: [user._id] },
   }).sort({ phase: 1, order: 1 });
 };
 
@@ -53,51 +71,68 @@ const buildEmailHtml = async (user, options = {}) => {
   const { announcement } = options;
   const cfg = await EmailSettings.getSingleton();
 
-  const dsa       = cfg.showDSA         ? await getDSAOfDay() : null;
-  const aimlTopic = cfg.showRoadmap && user.selectedPath !== 'de'   ? await getNextTopic(user, 'aiml') : null;
-  const deTopic   = cfg.showRoadmap && user.selectedPath !== 'aiml' ? await getNextTopic(user, 'de')   : null;
+  const dsa = cfg.showDSA ? await getDSAOfDay() : null;
+  const aimlTopic =
+    cfg.showRoadmap && user.selectedPath !== 'de' ? await getNextTopic(user, 'aiml') : null;
+  const deTopic =
+    cfg.showRoadmap && user.selectedPath !== 'aiml' ? await getNextTopic(user, 'de') : null;
 
   const today = new Date().toISOString().slice(0, 10);
   const [todayTasks, dueAssignments] = await Promise.all([
-    cfg.showTasks       ? Task.find({ user: user._id, date: today, completed: false }).limit(5) : Promise.resolve([]),
-    cfg.showAssignments ? Assignment.find({
-      user: user._id, completed: false,
-      dueDate: { $lte: new Date(Date.now() + 3 * 86400000) },
-    }).sort({ dueDate: 1 }).limit(5) : Promise.resolve([]),
+    cfg.showTasks
+      ? Task.find({ user: user._id, date: today, completed: false }).limit(5)
+      : Promise.resolve([]),
+    cfg.showAssignments
+      ? Assignment.find({
+          user: user._id,
+          completed: false,
+          dueDate: { $lte: new Date(Date.now() + 3 * 86400000) },
+        })
+          .sort({ dueDate: 1 })
+          .limit(5)
+      : Promise.resolve([]),
   ]);
 
   const taskRows = todayTasks.length
-    ? todayTasks.map(t =>
-        `<li style="margin:6px 0;color:#334155;">${t.title}
+    ? todayTasks
+        .map(
+          (t) =>
+            `<li style="margin:6px 0;color:#334155;">${t.title}
           <span style="background:#EEF2FF;color:#6366F1;padding:2px 8px;border-radius:12px;font-size:11px;margin-left:6px;">${t.type}</span>
-        </li>`).join('')
+        </li>`
+        )
+        .join('')
     : '<li style="color:#94A3B8;">No tasks for today yet.</li>';
 
   const assignmentRows = dueAssignments.length
-    ? dueAssignments.map(a => {
-        const days  = Math.ceil((new Date(a.dueDate) - Date.now()) / 86400000);
-        const color = days <= 1 ? '#EF4444' : days <= 2 ? '#F59E0B' : '#10B981';
-        return `<tr>
+    ? dueAssignments
+        .map((a) => {
+          const days = Math.ceil((new Date(a.dueDate) - Date.now()) / 86400000);
+          const color = days <= 1 ? '#EF4444' : days <= 2 ? '#F59E0B' : '#10B981';
+          return `<tr>
           <td style="padding:8px;border-bottom:1px solid #F1F5F9;">${a.subject}</td>
           <td style="padding:8px;border-bottom:1px solid #F1F5F9;">${a.title}</td>
           <td style="padding:8px;border-bottom:1px solid #F1F5F9;color:${color};font-weight:600;">
             ${days <= 0 ? 'OVERDUE!' : days === 1 ? 'Tomorrow' : `${days} days`}
           </td>
         </tr>`;
-      }).join('')
+        })
+        .join('')
     : '<tr><td colspan="3" style="padding:12px;color:#94A3B8;text-align:center;">No urgent assignments 🎉</td></tr>';
 
   const announceBlock = announcement
     ? `<div style="background:#FEF3C7;border-left:4px solid #F59E0B;border-radius:8px;padding:16px;margin:0 0 20px;">
         <p style="margin:0 0 4px;font-weight:600;color:#92400E;">📢 ${announcement.title || 'Announcement'}</p>
         <p style="margin:0;color:#78350F;">${announcement.content}</p>
-      </div>` : '';
+      </div>`
+    : '';
 
   const adminMsgBlock = cfg.dailyMessage
     ? `<div style="background:#EFF6FF;border-left:4px solid #6366F1;border-radius:8px;padding:16px;margin:0 0 20px;">
         <p style="margin:0 0 4px;font-weight:600;color:#3730A3;">📌 Message from Admin</p>
         <p style="margin:0;color:#1E40AF;">${cfg.dailyMessage}</p>
-      </div>` : '';
+      </div>`
+    : '';
 
   return `<!DOCTYPE html>
 <html>
@@ -108,63 +143,93 @@ const buildEmailHtml = async (user, options = {}) => {
   <div style="background:linear-gradient(135deg,#6366F1 0%,#8B5CF6 100%);border-radius:16px;padding:32px;text-align:center;margin-bottom:24px;">
     <h1 style="margin:0 0 4px;color:#fff;font-size:26px;">Good Morning, ${user.name}! 🌄</h1>
     <p style="margin:0;color:#C7D2FE;font-size:14px;">${formatDate()}</p>
-    ${cfg.showStreak ? `
+    ${
+      cfg.showStreak
+        ? `
     <div style="display:flex;justify-content:center;gap:32px;margin-top:16px;">
       <div style="color:#fff;text-align:center;">
-        <div style="font-size:24px;font-weight:700;">${user.streak||0}</div>
+        <div style="font-size:24px;font-weight:700;">${user.streak || 0}</div>
         <div style="font-size:12px;color:#C7D2FE;">Day Streak 🔥</div>
       </div>
       <div style="color:#fff;text-align:center;">
-        <div style="font-size:24px;font-weight:700;">${Math.round(user.totalStudyHours||0)}</div>
+        <div style="font-size:24px;font-weight:700;">${Math.round(user.totalStudyHours || 0)}</div>
         <div style="font-size:12px;color:#C7D2FE;">Total Hours</div>
       </div>
       <div style="color:#fff;text-align:center;">
-        <div style="font-size:24px;font-weight:700;">${user.studyTarget||2}h</div>
+        <div style="font-size:24px;font-weight:700;">${user.studyTarget || 2}h</div>
         <div style="font-size:12px;color:#C7D2FE;">Today's Target</div>
       </div>
-    </div>` : ''}
+    </div>`
+        : ''
+    }
   </div>
 
   ${adminMsgBlock}
   ${announceBlock}
 
-  ${cfg.showTasks ? `
+  ${
+    cfg.showTasks
+      ? `
   <div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
     <h2 style="margin:0 0 16px;font-size:16px;color:#0F172A;">📋 Today's Tasks</h2>
     <ul style="margin:0;padding-left:20px;">${taskRows}</ul>
-  </div>` : ''}
+  </div>`
+      : ''
+  }
 
-  ${dsa ? `
+  ${
+    dsa
+      ? `
   <div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-    <h2 style="margin:0 0 4px;font-size:16px;color:#0F172A;">💻 DSA Challenge — Day ${dsa.dayNumber||'?'}</h2>
+    <h2 style="margin:0 0 4px;font-size:16px;color:#0F172A;">💻 DSA Challenge — Day ${dsa.dayNumber || '?'}</h2>
     <p style="margin:0 0 12px;color:#64748B;font-size:13px;">${dsa.topic}</p>
-    <div style="background:#F8FAFC;border-radius:8px;padding:14px;border-left:4px solid ${dsa.difficulty==='Easy'?'#10B981':dsa.difficulty==='Medium'?'#F59E0B':'#EF4444'};">
+    <div style="background:#F8FAFC;border-radius:8px;padding:14px;border-left:4px solid ${
+      dsa.difficulty === 'Easy' ? '#10B981' : dsa.difficulty === 'Medium' ? '#F59E0B' : '#EF4444'
+    };">
       <div style="margin-bottom:8px;">
         <span style="font-weight:600;color:#0F172A;margin-right:8px;">${dsa.title}</span>
-        <span style="background:${dsa.difficulty==='Easy'?'#DCFCE7':dsa.difficulty==='Medium'?'#FEF3C7':'#FEE2E2'};
-          color:${dsa.difficulty==='Easy'?'#166534':dsa.difficulty==='Medium'?'#92400E':'#991B1B'};
+        <span style="background:${
+          dsa.difficulty === 'Easy' ? '#DCFCE7' : dsa.difficulty === 'Medium' ? '#FEF3C7' : '#FEE2E2'
+        };
+          color:${dsa.difficulty === 'Easy' ? '#166534' : dsa.difficulty === 'Medium' ? '#92400E' : '#991B1B'};
           padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;">${dsa.difficulty}</span>
       </div>
       ${dsa.description ? `<p style="margin:0 0 10px;color:#475569;font-size:14px;">${dsa.description}</p>` : ''}
-      ${dsa.resourceUrl ? `<a href="${dsa.resourceUrl}" style="background:#6366F1;color:#fff;padding:8px 16px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;display:inline-block;">Solve on ${dsa.platform} →</a>` : ''}
+      ${
+        dsa.resourceUrl
+          ? `<a href="${dsa.resourceUrl}" style="background:#6366F1;color:#fff;padding:8px 16px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;display:inline-block;">Solve on ${dsa.platform} →</a>`
+          : ''
+      }
     </div>
-  </div>` : ''}
+  </div>`
+      : ''
+  }
 
-  ${aimlTopic ? `
+  ${
+    aimlTopic
+      ? `
   <div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
     <h2 style="margin:0 0 4px;font-size:16px;color:#0F172A;">🤖 AI/ML — Next Topic</h2>
     <p style="margin:0 0 6px;color:#64748B;font-size:13px;">Phase ${aimlTopic.phase}: ${aimlTopic.phaseTitle}</p>
     <p style="margin:0;font-weight:500;color:#0F172A;">${aimlTopic.title}</p>
-  </div>` : ''}
+  </div>`
+      : ''
+  }
 
-  ${deTopic ? `
+  ${
+    deTopic
+      ? `
   <div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
     <h2 style="margin:0 0 4px;font-size:16px;color:#0F172A;">⚙️ Data Engineering — Next Topic</h2>
     <p style="margin:0 0 6px;color:#64748B;font-size:13px;">Phase ${deTopic.phase}: ${deTopic.phaseTitle}</p>
     <p style="margin:0;font-weight:500;color:#0F172A;">${deTopic.title}</p>
-  </div>` : ''}
+  </div>`
+      : ''
+  }
 
-  ${cfg.showAssignments ? `
+  ${
+    cfg.showAssignments
+      ? `
   <div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
     <h2 style="margin:0 0 16px;font-size:16px;color:#0F172A;">🎓 Upcoming Assignments</h2>
     <table style="width:100%;border-collapse:collapse;font-size:14px;">
@@ -175,10 +240,12 @@ const buildEmailHtml = async (user, options = {}) => {
       </tr></thead>
       <tbody>${assignmentRows}</tbody>
     </table>
-  </div>` : ''}
+  </div>`
+      : ''
+  }
 
   <div style="text-align:center;color:#94A3B8;font-size:13px;padding-bottom:16px;">
-    <p style="margin:0 0 4px;">${cfg.footerText||'Keep going! Every line of code counts. 💜'}</p>
+    <p style="margin:0 0 4px;">${cfg.footerText || 'Keep going! Every line of code counts. 💜'}</p>
     <p style="margin:0;">StudyTrack Nepal 🇳🇵</p>
   </div>
 </div>
@@ -193,15 +260,18 @@ const sendDailyEmailToUser = async (user, options = {}) => {
     console.log('⚠️  BREVO_API_KEY not set — skipping email for', user.email);
     return;
   }
-  const cfg     = await EmailSettings.getSingleton();
-  const html    = await buildEmailHtml(user, options);
+  const cfg = await EmailSettings.getSingleton();
+  const html = await buildEmailHtml(user, options);
   const subject = cfg.customSubject
     ? cfg.customSubject.replace('{{name}}', user.name).replace('{{day}}', getDayName())
     : `📚 Good Morning ${user.name}! Study plan for ${getDayName()}`;
 
   await brevoPost({
-    sender:      { name: process.env.BREVO_FROM_NAME || 'StudyTrack Nepal', email: process.env.BREVO_FROM_EMAIL },
-    to:          [{ email: user.email, name: user.name }],
+    sender: {
+      name: process.env.BREVO_FROM_NAME || 'StudyTrack Nepal',
+      email: process.env.BREVO_FROM_EMAIL,
+    },
+    to: [{ email: user.email, name: user.name }],
     subject,
     htmlContent: html,
   });
@@ -214,7 +284,7 @@ const sendAssignmentReminderToUser = async (user, assignment) => {
   if (!process.env.BREVO_API_KEY) return;
 
   const dueDate = new Date(assignment.dueDate);
-  const days    = Math.ceil((dueDate - Date.now()) / 86400000);
+  const days = Math.ceil((dueDate - Date.now()) / 86400000);
   const urgency = days <= 1 ? '#EF4444' : days <= 2 ? '#F59E0B' : '#6366F1';
   const dueLabel = days <= 0 ? 'OVERDUE!' : days === 1 ? 'Due Tomorrow!' : `Due in ${days} days`;
 
@@ -233,7 +303,12 @@ const sendAssignmentReminderToUser = async (user, assignment) => {
     <p style="margin:0 0 16px;font-weight:600;color:#0F172A;font-size:16px;">${assignment.title}</p>
     <p style="margin:0 0 6px;font-size:13px;color:#64748B;">Due Date</p>
     <p style="margin:0;font-weight:600;color:${urgency};font-size:16px;">
-      ${dueDate.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}
+      ${dueDate.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })}
     </p>
   </div>
   <p style="text-align:center;color:#94A3B8;font-size:12px;margin-top:16px;">StudyTrack Nepal 🇳🇵</p>
@@ -242,12 +317,38 @@ const sendAssignmentReminderToUser = async (user, assignment) => {
 </html>`;
 
   await brevoPost({
-    sender:      { name: process.env.BREVO_FROM_NAME || 'StudyTrack Nepal', email: process.env.BREVO_FROM_EMAIL },
-    to:          [{ email: user.email, name: user.name }],
-    subject:     `⚠️ Assignment ${dueLabel}: ${assignment.title} — ${assignment.subject}`,
+    sender: {
+      name: process.env.BREVO_FROM_NAME || 'StudyTrack Nepal',
+      email: process.env.BREVO_FROM_EMAIL,
+    },
+    to: [{ email: user.email, name: user.name }],
+    subject: `⚠️ Assignment ${dueLabel}: ${assignment.title} — ${assignment.subject}`,
     htmlContent: html,
   });
   console.log(`✅ Assignment reminder sent to ${user.email}`);
 };
 
-module.exports = { sendDailyEmailToUser, sendAssignmentReminderToUser };
+/**
+ * Reusable DRY batch email helper with rate-limiting delay and error trapping.
+ */
+const sendBatchEmails = async (users, sendFn, delayMs = 300) => {
+  let sent = 0;
+  for (const u of users) {
+    try {
+      await sendFn(u);
+      sent++;
+    } catch (e) {
+      console.error(`Batch email failed for ${u.email || u._id}:`, e.message);
+    }
+    if (delayMs > 0) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return sent;
+};
+
+module.exports = {
+  sendDailyEmailToUser,
+  sendAssignmentReminderToUser,
+  sendBatchEmails,
+};

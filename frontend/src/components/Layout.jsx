@@ -3,17 +3,18 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, Code2, Map, FolderKanban, GraduationCap,
-  Settings, LogOut, Menu, X, Shield, ChevronDown, Flame, BookOpen, BookMarked
+  Settings, LogOut, Menu, X, Shield, ChevronDown, Flame, BookOpen, BookMarked, Film
 } from 'lucide-react';
 
 const navItems = [
-  { to: '/',         icon: LayoutDashboard, label: 'Dashboard',    end: true },
-  { to: '/dsa',      icon: Code2,           label: 'DSA Tracker' },
-  { to: '/roadmap',  icon: Map,             label: 'Roadmap' },
-  { to: '/projects', icon: FolderKanban,    label: 'Projects' },
-  { to: '/college',   icon: GraduationCap,   label: 'College' },
-  { to: '/subjects',  icon: BookMarked,      label: 'Subjects' },
-  { to: '/settings', icon: Settings,        label: 'Settings' },
+  { to: '/',              icon: LayoutDashboard, label: 'Dashboard',     end: true },
+  { to: '/video-planner', icon: Film,            label: 'Video Planner' },
+  { to: '/dsa',           icon: Code2,           label: 'DSA Tracker' },
+  { to: '/roadmap',       icon: Map,             label: 'Roadmap' },
+  { to: '/projects',      icon: FolderKanban,    label: 'Projects' },
+  { to: '/college',        icon: GraduationCap,   label: 'College' },
+  { to: '/subjects',       icon: BookMarked,      label: 'Subjects' },
+  { to: '/settings',      icon: Settings,        label: 'Settings' },
 ];
 
 const adminItems = [

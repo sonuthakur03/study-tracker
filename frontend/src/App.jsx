@@ -8,6 +8,7 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import VideoPlanner from './pages/VideoPlanner';
 import DSATracker from './pages/DSATracker';
 import Roadmap from './pages/Roadmap';
 import Projects from './pages/Projects';
@@ -50,6 +51,7 @@ export default function App() {
           {/* Protected */}
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
+            <Route path="video-planner" element={<VideoPlanner />} />
             <Route path="dsa" element={<DSATracker />} />
             <Route path="roadmap" element={<Roadmap />} />
             <Route path="projects" element={<Projects />} />
