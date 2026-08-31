@@ -9,8 +9,9 @@ const videoDailyLogSchema = new mongoose.Schema({
   cycleType:          { type: String, enum: ['generation_sprint', 'generation_and_edit'], required: true },
   plannedClips:       { type: Number, required: true },              // 10 for odd days, 5 for even days
   actualClips:        { type: Number, default: 0 },
-  bonusCreditsUsed:   { type: Number, default: 0 },                  // max 50
+  bonusCreditsUsed:   { type: Number, default: 0 },                  // e.g. up to 250 (5 accounts * 50)
   monthlyCreditsUsed: { type: Number, default: 0 },                  // 50 on odd days, 0 on even days
+  accountsCompleted:  { type: [Number], default: [] },               // indices of completed accounts (1-based, e.g. [1,2,3,4,5])
   isCompleted:        { type: Boolean, default: false, index: true },
   completedAt:        { type: Date },
   completedBy:        { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -22,11 +23,16 @@ videoDailyLogSchema.index({ month: 1, dayOfMonth: 1 }, { unique: true });
 
 // ─── Video Credit Monthly State ───────────────────────────────────────────────
 const videoCreditStateSchema = new mongoose.Schema({
-  yearMonth:            { type: String, required: true, unique: true, index: true }, // 'YYYY-MM'
-  monthlyPoolTotal:     { type: Number, default: 1000 },
-  monthlyPoolUsed:      { type: Number, default: 0 },
-  totalClipsGenerated:  { type: Number, default: 0 },
-  generalDriveUrl:      { type: String, default: '' },
+  yearMonth:              { type: String, required: true, unique: true, index: true }, // 'YYYY-MM'
+  monthlyPoolTotal:       { type: Number, default: 1000 },
+  monthlyPoolUsed:        { type: Number, default: 0 },
+  totalClipsGenerated:    { type: Number, default: 0 },
+  accountsCount:          { type: Number, default: 5 },   // 5 bonus accounts
+  bonusCreditsPerAccount: { type: Number, default: 50 },  // 50 credits per account/day
+  secondsPerClip:         { type: Number, default: 8 },   // 8 seconds per clip (10 credits)
+  creditsPerClip:         { type: Number, default: 10 },  // 10 credits per clip
+  targetClipsPerVideo:    { type: Number, default: 15 },  // 15 clips = 120s / 2m
+  generalDriveUrl:        { type: String, default: '' },
 }, { timestamps: true });
 
 // ─── Collaborative Video Idea ─────────────────────────────────────────────────

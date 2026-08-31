@@ -23,6 +23,22 @@ const getCurrentMonthAndDate = () => {
   };
 };
 
+// Helper: Format seconds into human readable duration
+const formatDuration = (totalSeconds) => {
+  if (!totalSeconds || totalSeconds <= 0) return '0s';
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  const hrs = Math.floor(mins / 60);
+  if (hrs > 0) {
+    const remMins = mins % 60;
+    return `${hrs}h ${remMins > 0 ? `${remMins}m` : ''} ${secs > 0 ? `${secs}s` : ''}`.trim();
+  }
+  if (mins > 0) {
+    return `${mins}m ${secs > 0 ? `${secs}s` : ''}`.trim();
+  }
+  return `${secs}s`;
+};
+
 // ── GET /api/video-planner/summary ───────────────────────────────────────────
 router.get('/summary', asyncHandler(async (req, res) => {
   const { todayDate, todayDayNumber, yearMonth: defaultMonth } = getCurrentMonthAndDate();
@@ -37,6 +53,17 @@ router.get('/summary', asyncHandler(async (req, res) => {
   if (!state) {
     state = await VideoCreditState.create({ yearMonth: month });
   }
+
+  const accountsCount = state.accountsCount || 5;
+  const bonusCreditsPerAccount = state.bonusCreditsPerAccount || 50;
+  const secondsPerClip = state.secondsPerClip || 8;
+  const creditsPerClip = state.creditsPerClip || 10;
+  const targetClipsPerVideo = state.targetClipsPerVideo || 15;
+  const monthlyPoolTotal = state.monthlyPoolTotal || 1000;
+  const dailyBonusCredits = accountsCount * bonusCreditsPerAccount; // e.g. 5 * 50 = 250
+  const dailyBonusClips = Math.floor(dailyBonusCredits / creditsPerClip); // e.g. 25 clips
+  const sprintMonthlyCredits = 50;
+  const sprintMonthlyClips = Math.floor(sprintMonthlyCredits / creditsPerClip); // 5 clips
 
   // 2. Fetch existing daily logs for this month
   const existingLogs = await VideoDailyLog.find({ month }).populate('completedBy', 'name email');
@@ -53,36 +80,63 @@ router.get('/summary', asyncHandler(async (req, res) => {
   for (let day = 1; day <= totalDays; day++) {
     const isOdd = day % 2 !== 0;
     const dateStr = `${month}-${String(day).padStart(2, '0')}`;
-    const plannedClips = isOdd ? 10 : 5;
-    const monthlyCreditsPlanned = isOdd ? 50 : 0;
+    const plannedClips = isOdd ? (dailyBonusClips + sprintMonthlyClips) : dailyBonusClips;
+    const monthlyCreditsPlanned = isOdd ? sprintMonthlyCredits : 0;
     const cycleType = isOdd ? 'generation_sprint' : 'generation_and_edit';
 
     let dayLog = logMap.get(day);
     const isPast = dateStr < todayDate;
     const isToday = dateStr === todayDate;
 
-    if (dayLog && dayLog.isCompleted) {
-      completedDaysCount++;
-      totalClips += dayLog.actualClips || plannedClips;
-      monthlyCreditsSpent += dayLog.monthlyCreditsUsed;
+    const isFullyCompleted = Boolean(dayLog?.isCompleted);
+    const completedAccounts = dayLog?.accountsCompleted && dayLog.accountsCompleted.length > 0
+      ? dayLog.accountsCompleted
+      : (isFullyCompleted ? Array.from({ length: accountsCount }, (_, i) => i + 1) : []);
+
+    const actualClips = isFullyCompleted
+      ? (dayLog.actualClips || plannedClips)
+      : (completedAccounts.length * Math.floor(bonusCreditsPerAccount / creditsPerClip));
+
+    const bonusCreditsUsed = isFullyCompleted
+      ? dailyBonusCredits
+      : (completedAccounts.length * bonusCreditsPerAccount);
+
+    const monthlyCreditsUsed = isFullyCompleted ? monthlyCreditsPlanned : (dayLog?.monthlyCreditsUsed || 0);
+
+    if (isFullyCompleted || completedAccounts.length > 0) {
+      if (isFullyCompleted) completedDaysCount++;
+      totalClips += actualClips;
+      monthlyCreditsSpent += monthlyCreditsUsed;
     } else if (isPast) {
       skippedDaysCount++;
     }
+
+    const plannedSeconds = plannedClips * secondsPerClip;
+    const actualSeconds = actualClips * secondsPerClip;
 
     days.push({
       dayOfMonth: day,
       date: dateStr,
       isOddDay: isOdd,
       cycleType,
-      cycleTitle: isOdd ? 'Generation Sprint (10 clips)' : 'Generation & Edit Day (5 clips)',
+      cycleTitle: isOdd
+        ? `Generation Sprint (${plannedClips} clips / ${formatDuration(plannedSeconds)})`
+        : `Bonus Gen & Edit (${plannedClips} clips / ${formatDuration(plannedSeconds)})`,
       plannedClips,
-      bonusCreditsPlanned: 50,
+      plannedSeconds,
+      plannedDurationFormatted: formatDuration(plannedSeconds),
+      bonusCreditsPlanned: dailyBonusCredits,
       monthlyCreditsPlanned,
-      actualClips: dayLog?.isCompleted ? (dayLog.actualClips || plannedClips) : 0,
-      bonusCreditsUsed: dayLog?.isCompleted ? 50 : 0,
-      monthlyCreditsUsed: dayLog?.isCompleted ? monthlyCreditsPlanned : 0,
-      isCompleted: Boolean(dayLog?.isCompleted),
-      isSkipped: isPast && !dayLog?.isCompleted,
+      actualClips,
+      actualSeconds,
+      actualDurationFormatted: formatDuration(actualSeconds),
+      bonusCreditsUsed,
+      monthlyCreditsUsed,
+      accountsCompleted: completedAccounts,
+      accountsCount,
+      isCompleted: isFullyCompleted,
+      isPartiallyCompleted: !isFullyCompleted && completedAccounts.length > 0,
+      isSkipped: isPast && !isFullyCompleted && completedAccounts.length === 0,
       isToday,
       isPast,
       completedAt: dayLog?.completedAt || null,
@@ -94,40 +148,52 @@ router.get('/summary', asyncHandler(async (req, res) => {
   }
 
   // 4. Update state running totals
-  const monthlyPoolRemaining = Math.max(0, 1000 - monthlyCreditsSpent);
-  const currentVideoNumber = Math.floor(totalClips / 15) + 1;
-  const currentVideoClipsCount = totalClips % 15;
-  const currentVideoClipsNeeded = 15 - currentVideoClipsCount;
+  const monthlyPoolRemaining = Math.max(0, monthlyPoolTotal - monthlyCreditsSpent);
+  const currentVideoNumber = Math.floor(totalClips / targetClipsPerVideo) + 1;
+  const currentVideoClipsCount = totalClips % targetClipsPerVideo;
+  const currentVideoClipsNeeded = targetClipsPerVideo - currentVideoClipsCount;
+  const currentVideoSecondsCount = currentVideoClipsCount * secondsPerClip;
+  const currentVideoSecondsTarget = targetClipsPerVideo * secondsPerClip;
+  const totalSecondsGenerated = totalClips * secondsPerClip;
+  const monthlyPoolRemainingSeconds = Math.floor(monthlyPoolRemaining / creditsPerClip) * secondsPerClip;
 
   state.monthlyPoolUsed = monthlyCreditsSpent;
   state.totalClipsGenerated = totalClips;
   await state.save();
 
   // 5. Today's status
-  const todayEntry = days.find((d) => d.date === todayDate) || {
-    dayOfMonth: todayDayNumber,
-    date: todayDate,
-    isOddDay: todayDayNumber % 2 !== 0,
-    cycleType: todayDayNumber % 2 !== 0 ? 'generation_sprint' : 'generation_and_edit',
-    cycleTitle: todayDayNumber % 2 !== 0 ? 'Generation Sprint (10 clips)' : 'Generation & Edit Day (5 clips)',
-    plannedClips: todayDayNumber % 2 !== 0 ? 10 : 5,
-    bonusCreditsPlanned: 50,
-    monthlyCreditsPlanned: todayDayNumber % 2 !== 0 ? 50 : 0,
-    isCompleted: false,
-    bonusCreditsUsed: 0,
-    notes: '',
-    driveUrl: '',
-  };
+  const todayEntry = days.find((d) => d.date === todayDate) || days[0];
 
   res.json({
     month,
-    monthlyPoolTotal: 1000,
+    settings: {
+      accountsCount,
+      bonusCreditsPerAccount,
+      secondsPerClip,
+      creditsPerClip,
+      targetClipsPerVideo,
+      monthlyPoolTotal,
+      dailyBonusCredits,
+      dailyBonusClips,
+      dailyBonusSeconds: dailyBonusClips * secondsPerClip,
+      dailyBonusDurationFormatted: formatDuration(dailyBonusClips * secondsPerClip),
+      targetVideoSeconds: currentVideoSecondsTarget,
+      targetVideoDurationFormatted: formatDuration(currentVideoSecondsTarget),
+    },
+    monthlyPoolTotal,
     monthlyPoolUsed: monthlyCreditsSpent,
     monthlyPoolRemaining,
+    monthlyPoolRemainingSeconds,
+    monthlyPoolRemainingDurationFormatted: formatDuration(monthlyPoolRemainingSeconds),
     totalClipsGenerated: totalClips,
+    totalSecondsGenerated,
+    totalDurationFormatted: formatDuration(totalSecondsGenerated),
     currentVideoNumber,
     currentVideoClipsCount,
     currentVideoClipsNeeded,
+    currentVideoSecondsCount,
+    currentVideoDurationFormatted: formatDuration(currentVideoSecondsCount),
+    currentVideoTargetFormatted: formatDuration(currentVideoSecondsTarget),
     completedDaysCount,
     skippedDaysCount,
     generalDriveUrl: state.generalDriveUrl || '',
@@ -145,9 +211,20 @@ router.post('/toggle-day', asyncHandler(async (req, res) => {
   const month = `${yearStr}-${monthStr}`;
   const dayOfMonth = parseInt(dayStr, 10);
   const isOddDay = dayOfMonth % 2 !== 0;
-  const plannedClips = isOddDay ? 10 : 5;
+
+  let state = await VideoCreditState.findOne({ yearMonth: month });
+  if (!state) state = await VideoCreditState.create({ yearMonth: month });
+
+  const accountsCount = state.accountsCount || 5;
+  const bonusCreditsPerAccount = state.bonusCreditsPerAccount || 50;
+  const creditsPerClip = state.creditsPerClip || 10;
+  const dailyBonusCredits = accountsCount * bonusCreditsPerAccount;
+  const dailyBonusClips = Math.floor(dailyBonusCredits / creditsPerClip);
+  const sprintMonthlyCredits = 50;
+  const sprintMonthlyClips = Math.floor(sprintMonthlyCredits / creditsPerClip);
+  const plannedClips = isOddDay ? (dailyBonusClips + sprintMonthlyClips) : dailyBonusClips;
   const cycleType = isOddDay ? 'generation_sprint' : 'generation_and_edit';
-  const monthlyCredits = isOddDay ? 50 : 0;
+  const monthlyCredits = isOddDay ? sprintMonthlyCredits : 0;
 
   let log = await VideoDailyLog.findOne({ month, dayOfMonth });
 
@@ -160,8 +237,9 @@ router.post('/toggle-day', asyncHandler(async (req, res) => {
       cycleType,
       plannedClips,
       actualClips: plannedClips,
-      bonusCreditsUsed: 50,
+      bonusCreditsUsed: dailyBonusCredits,
       monthlyCreditsUsed: monthlyCredits,
+      accountsCompleted: Array.from({ length: accountsCount }, (_, i) => i + 1),
       isCompleted: true,
       completedAt: new Date(),
       completedBy: req.user._id,
@@ -173,8 +251,9 @@ router.post('/toggle-day', asyncHandler(async (req, res) => {
     const nextCompleted = !log.isCompleted;
     log.isCompleted = nextCompleted;
     log.actualClips = nextCompleted ? plannedClips : 0;
-    log.bonusCreditsUsed = nextCompleted ? 50 : 0;
+    log.bonusCreditsUsed = nextCompleted ? dailyBonusCredits : 0;
     log.monthlyCreditsUsed = nextCompleted ? monthlyCredits : 0;
+    log.accountsCompleted = nextCompleted ? Array.from({ length: accountsCount }, (_, i) => i + 1) : [];
     log.completedAt = nextCompleted ? new Date() : null;
     log.completedBy = nextCompleted ? req.user._id : null;
     if (notes !== undefined) log.notes = notes;
@@ -188,6 +267,79 @@ router.post('/toggle-day', asyncHandler(async (req, res) => {
   });
 }));
 
+// ── POST /api/video-planner/toggle-account ───────────────────────────────────
+router.post('/toggle-account', asyncHandler(async (req, res) => {
+  const { date, accountIndex } = req.body;
+  if (!date || accountIndex === undefined) {
+    return res.status(400).json({ message: 'Date and accountIndex (1-based) are required' });
+  }
+
+  const [yearStr, monthStr, dayStr] = date.split('-');
+  const month = `${yearStr}-${monthStr}`;
+  const dayOfMonth = parseInt(dayStr, 10);
+  const isOddDay = dayOfMonth % 2 !== 0;
+
+  let state = await VideoCreditState.findOne({ yearMonth: month });
+  if (!state) state = await VideoCreditState.create({ yearMonth: month });
+
+  const accountsCount = state.accountsCount || 5;
+  const bonusCreditsPerAccount = state.bonusCreditsPerAccount || 50;
+  const creditsPerClip = state.creditsPerClip || 10;
+  const dailyBonusCredits = accountsCount * bonusCreditsPerAccount;
+  const dailyBonusClips = Math.floor(dailyBonusCredits / creditsPerClip);
+  const sprintMonthlyCredits = 50;
+  const sprintMonthlyClips = Math.floor(sprintMonthlyCredits / creditsPerClip);
+  const plannedClips = isOddDay ? (dailyBonusClips + sprintMonthlyClips) : dailyBonusClips;
+  const cycleType = isOddDay ? 'generation_sprint' : 'generation_and_edit';
+
+  let log = await VideoDailyLog.findOne({ month, dayOfMonth });
+  if (!log) {
+    log = new VideoDailyLog({
+      date,
+      month,
+      dayOfMonth,
+      isOddDay,
+      cycleType,
+      plannedClips,
+      actualClips: 0,
+      bonusCreditsUsed: 0,
+      monthlyCreditsUsed: 0,
+      accountsCompleted: [],
+      isCompleted: false,
+    });
+  }
+
+  const currentAccounts = new Set(log.accountsCompleted || []);
+  if (currentAccounts.has(accountIndex)) {
+    currentAccounts.delete(accountIndex);
+  } else {
+    currentAccounts.add(accountIndex);
+  }
+
+  log.accountsCompleted = Array.from(currentAccounts).sort((a, b) => a - b);
+  const completedAllAccounts = log.accountsCompleted.length === accountsCount;
+  log.isCompleted = completedAllAccounts;
+
+  const clipsPerAcc = Math.floor(bonusCreditsPerAccount / creditsPerClip);
+  const bonusClipsDone = log.accountsCompleted.length * clipsPerAcc;
+  const monthlyClipsDone = completedAllAccounts && isOddDay ? sprintMonthlyClips : 0;
+  log.actualClips = bonusClipsDone + monthlyClipsDone;
+  log.bonusCreditsUsed = log.accountsCompleted.length * bonusCreditsPerAccount;
+  log.monthlyCreditsUsed = completedAllAccounts && isOddDay ? sprintMonthlyCredits : 0;
+
+  if (completedAllAccounts) {
+    log.completedAt = new Date();
+    log.completedBy = req.user._id;
+  }
+
+  await log.save();
+
+  res.json({
+    message: `Account ${accountIndex} status updated`,
+    log,
+  });
+}));
+
 // ── PUT /api/video-planner/day-details ─────────────────────────────────────────
 router.put('/day-details', asyncHandler(async (req, res) => {
   const { date, notes, driveUrl } = req.body;
@@ -197,7 +349,18 @@ router.put('/day-details', asyncHandler(async (req, res) => {
   const month = `${yearStr}-${monthStr}`;
   const dayOfMonth = parseInt(dayStr, 10);
   const isOddDay = dayOfMonth % 2 !== 0;
-  const plannedClips = isOddDay ? 10 : 5;
+
+  let state = await VideoCreditState.findOne({ yearMonth: month });
+  if (!state) state = await VideoCreditState.create({ yearMonth: month });
+
+  const accountsCount = state.accountsCount || 5;
+  const bonusCreditsPerAccount = state.bonusCreditsPerAccount || 50;
+  const creditsPerClip = state.creditsPerClip || 10;
+  const dailyBonusCredits = accountsCount * bonusCreditsPerAccount;
+  const dailyBonusClips = Math.floor(dailyBonusCredits / creditsPerClip);
+  const sprintMonthlyCredits = 50;
+  const sprintMonthlyClips = Math.floor(sprintMonthlyCredits / creditsPerClip);
+  const plannedClips = isOddDay ? (dailyBonusClips + sprintMonthlyClips) : dailyBonusClips;
   const cycleType = isOddDay ? 'generation_sprint' : 'generation_and_edit';
 
   let log = await VideoDailyLog.findOne({ month, dayOfMonth });
@@ -224,12 +387,30 @@ router.put('/day-details', asyncHandler(async (req, res) => {
 
 // ── PUT /api/video-planner/state ──────────────────────────────────────────────
 router.put('/state', asyncHandler(async (req, res) => {
-  const { month, generalDriveUrl } = req.body;
+  const {
+    month,
+    generalDriveUrl,
+    accountsCount,
+    bonusCreditsPerAccount,
+    secondsPerClip,
+    creditsPerClip,
+    targetClipsPerVideo,
+    monthlyPoolTotal,
+  } = req.body;
   const targetMonth = month || getCurrentMonthAndDate().yearMonth;
+
+  const updates = {};
+  if (generalDriveUrl !== undefined) updates.generalDriveUrl = generalDriveUrl;
+  if (accountsCount !== undefined) updates.accountsCount = Math.max(1, parseInt(accountsCount, 10) || 5);
+  if (bonusCreditsPerAccount !== undefined) updates.bonusCreditsPerAccount = Math.max(1, parseInt(bonusCreditsPerAccount, 10) || 50);
+  if (secondsPerClip !== undefined) updates.secondsPerClip = Math.max(1, parseInt(secondsPerClip, 10) || 8);
+  if (creditsPerClip !== undefined) updates.creditsPerClip = Math.max(1, parseInt(creditsPerClip, 10) || 10);
+  if (targetClipsPerVideo !== undefined) updates.targetClipsPerVideo = Math.max(1, parseInt(targetClipsPerVideo, 10) || 15);
+  if (monthlyPoolTotal !== undefined) updates.monthlyPoolTotal = Math.max(0, parseInt(monthlyPoolTotal, 10) || 1000);
 
   const state = await VideoCreditState.findOneAndUpdate(
     { yearMonth: targetMonth },
-    { generalDriveUrl: generalDriveUrl || '' },
+    updates,
     { new: true, upsert: true }
   );
 
