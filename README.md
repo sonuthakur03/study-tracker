@@ -3,6 +3,8 @@
 
 A full-stack web app for Nepali BCA students to track their AI/ML and Data Engineering learning journey alongside college work.
 
+**🔴 Live Demo:** [https://study-tracker-gules-delta.vercel.app/](https://study-tracker-gules-delta.vercel.app/)
+
 ---
 
 ## ✨ Features
@@ -146,7 +148,7 @@ Visit `http://localhost:5173`
 5. Build command: `npm install`
 6. Start command: `npm start`
 7. Add all environment variables from `.env.example`
-8. Deploy — get your URL: `https://your-app.onrender.com`
+8. Deploy — get your URL: `https://<your-app>.onrender.com`
 
 ### Frontend → Vercel (Free)
 1. Push frontend folder to GitHub
@@ -154,9 +156,9 @@ Visit `http://localhost:5173`
 3. Connect repo, set **Root Directory** to `frontend`
 4. Add environment variable:
    ```
-   VITE_API_URL=https://your-app.onrender.com/api
+   VITE_API_URL=https://<your-app>.onrender.com/api
    ```
-5. Deploy
+5. Deploy — get your frontend URL: `https://<your-frontend>.vercel.app`
 
 ### Seed in Production
 After deploying backend, trigger seed via Render's shell:
@@ -202,7 +204,7 @@ PORT=5000
 MONGODB_URI=mongodb+srv://...
 JWT_SECRET=your_secret_key
 JWT_EXPIRES_IN=7d
-FRONTEND_URL=https://your-frontend.vercel.app
+FRONTEND_URL=https://<your-frontend>.vercel.app
 EMAIL_USER=your@gmail.com
 EMAIL_PASS=your_16char_app_password
 ADMIN_EMAIL=admin@gmail.com
